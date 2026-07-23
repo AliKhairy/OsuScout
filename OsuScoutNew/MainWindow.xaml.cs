@@ -9,6 +9,7 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using System.Threading.Tasks;
 using Velopack;
+using Velopack.Sources;
 
 namespace OsuScoutNew
 {
@@ -205,8 +206,7 @@ namespace OsuScoutNew
         {
             try
             {
-                // This URL should point to your new GitHub repository once you create it
-                var mgr = new UpdateManager("https://github.com/AliKhairy/OsuScout");
+                var mgr = new UpdateManager(new GithubSource("https://github.com/AliKhairy/OsuScout", null, false));
                 
                 var newVersion = await mgr.CheckForUpdatesAsync();
                 if (newVersion != null)
