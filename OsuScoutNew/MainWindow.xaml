@@ -201,7 +201,7 @@
                             <Run Text="{Binding UpperValue, ElementName=LengthSlider}"/>
                             <Run Text=" MINS"/>
                         </TextBlock>
-                        <mah:RangeSlider x:Name="LengthSlider" Minimum="1" Maximum="10" LowerValue="1" UpperValue="10" TickFrequency="1" IsSnapToTickEnabled="True" LowerValueChanged="Slider_ValueChanged" UpperValueChanged="Slider_ValueChanged" Margin="0,5,0,0"/>
+                        <mah:RangeSlider x:Name="LengthSlider" Minimum="1" Maximum="20" LowerValue="1" UpperValue="20" TickFrequency="1" IsSnapToTickEnabled="True" LowerValueChanged="Slider_ValueChanged" UpperValueChanged="Slider_ValueChanged" Margin="0,5,0,0"/>
                     </StackPanel>
                 </Grid>
             </StackPanel>
