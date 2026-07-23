@@ -10,6 +10,8 @@ using System.Windows.Interop;
 using System.Threading.Tasks;
 using Velopack;
 using Velopack.Sources;
+using System.ComponentModel;
+using System.Windows.Controls;
 
 namespace OsuScoutNew
 {
@@ -215,12 +217,55 @@ namespace OsuScoutNew
                 if (newVersion != null)
                 {
                     await mgr.DownloadUpdatesAsync(newVersion);
-                    mgr.ApplyUpdatesAndRestart(newVersion);
+                    mgr.WaitExitThenApplyUpdates(newVersion);
                 }
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"Update failed: {ex.Message}");
+            }
+        }
+
+        private void BeatmapGrid_Sorting(object sender, DataGridSortingEventArgs e)
+        {
+            e.Handled = true;
+
+            var column = e.Column;
+            var sortDirection = column.SortDirection;
+
+            // 3-state sort: Ascending -> Descending -> None
+            if (sortDirection == null)
+                column.SortDirection = ListSortDirection.Ascending;
+            else if (sortDirection == ListSortDirection.Ascending)
+                column.SortDirection = ListSortDirection.Descending;
+            else
+                column.SortDirection = null;
+
+            // Shift for multi-sort, but since they asked to sort multiple columns, 
+            // if shift is NOT down, we clear the others
+            var shiftDown = Keyboard.IsKeyDown(Key.LeftShift) || Keyboard.IsKeyDown(Key.RightShift);
+
+            if (!shiftDown)
+            {
+                foreach (var c in BeatmapGrid.Columns)
+                {
+                    if (c != column)
+                    {
+                        c.SortDirection = null;
+                    }
+                }
+                BeatmapGrid.Items.SortDescriptions.Clear();
+            }
+
+            var existing = BeatmapGrid.Items.SortDescriptions.FirstOrDefault(sd => sd.PropertyName == column.SortMemberPath);
+            if (existing.PropertyName != null)
+            {
+                BeatmapGrid.Items.SortDescriptions.Remove(existing);
+            }
+
+            if (column.SortDirection != null)
+            {
+                BeatmapGrid.Items.SortDescriptions.Add(new SortDescription(column.SortMemberPath, column.SortDirection.Value));
             }
         }
 

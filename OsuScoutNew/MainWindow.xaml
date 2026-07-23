@@ -213,7 +213,8 @@
                           Foreground="{StaticResource TextPrimaryBrush}" RowBackground="Transparent"
                           GridLinesVisibility="None" HeadersVisibility="Column"
                           RowHeaderWidth="0" VerticalGridLinesBrush="Transparent"
-                          CanUserResizeRows="False" CanUserSortColumns="True">
+                          CanUserResizeRows="False" CanUserSortColumns="True"
+                          Sorting="BeatmapGrid_Sorting">
                     <DataGrid.Resources>
                         <Style TargetType="DataGridColumnHeader">
                             <Setter Property="Background" Value="Transparent"/>
@@ -227,15 +228,24 @@
                             <Setter Property="Template">
                                 <Setter.Value>
                                     <ControlTemplate TargetType="DataGridColumnHeader">
-                                        <Border Background="{TemplateBinding Background}"
-                                                BorderBrush="{TemplateBinding BorderBrush}"
-                                                BorderThickness="{TemplateBinding BorderThickness}"
-                                                Padding="{TemplateBinding Padding}">
-                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                                <ContentPresenter VerticalAlignment="Center"/>
-                                                <Path x:Name="SortArrow" Margin="6,0,0,0" VerticalAlignment="Center" Width="8" Height="5" Stretch="Fill" Fill="{TemplateBinding Foreground}" Visibility="Collapsed" />
-                                            </StackPanel>
-                                        </Border>
+                                        <Grid>
+                                            <Border Background="{TemplateBinding Background}"
+                                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                                    Padding="{TemplateBinding Padding}">
+                                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                    <ContentPresenter VerticalAlignment="Center"/>
+                                                    <Path x:Name="SortArrow" Margin="6,0,0,0" VerticalAlignment="Center" Width="8" Height="5" Stretch="Fill" Fill="{TemplateBinding Foreground}" Visibility="Collapsed" />
+                                                </StackPanel>
+                                            </Border>
+                                            <Thumb x:Name="PART_RightHeaderGripper" HorizontalAlignment="Right" Width="2" Cursor="SizeWE">
+                                                <Thumb.Template>
+                                                    <ControlTemplate TargetType="Thumb">
+                                                        <Border Background="Transparent"/>
+                                                    </ControlTemplate>
+                                                </Thumb.Template>
+                                            </Thumb>
+                                        </Grid>
                                         <ControlTemplate.Triggers>
                                             <Trigger Property="SortDirection" Value="Ascending">
                                                 <Setter TargetName="SortArrow" Property="Visibility" Value="Visible"/>

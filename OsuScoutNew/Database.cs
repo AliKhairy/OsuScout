@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 using Microsoft.EntityFrameworkCore;
 
 namespace OsuScout
@@ -27,8 +27,10 @@ namespace OsuScout
 
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         {
-            // This creates a tiny file called 'osuscout.db' in the folder where your app runs
-            optionsBuilder.UseSqlite("Data Source=osuscout.db");
+            string folder = System.IO.Path.Combine(System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData), "OsuScout");
+            System.IO.Directory.CreateDirectory(folder);
+            string dbPath = System.IO.Path.Combine(folder, "osuscout.db");
+            optionsBuilder.UseSqlite($"Data Source={dbPath}");
         }
     }
 }
