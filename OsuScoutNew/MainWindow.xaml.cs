@@ -174,7 +174,7 @@ namespace OsuScoutNew
         {
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
             {
-                FileName = "https://github.com/sponsors/AliKhairy",
+                FileName = "https://paypal.me/metacis67",
                 UseShellExecute = true
             });
         }

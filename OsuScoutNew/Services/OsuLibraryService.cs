@@ -42,7 +42,7 @@ namespace OsuScoutNew.Services
                 foreach (var tag in requiredTags) query = query.Where(m => m.Tags.Contains(tag));
                 foreach (var tag in excludedTags) query = query.Where(m => !m.Tags.Contains(tag));
 
-                return query.OrderByDescending(m => m.StarRating).Take(500).ToList();
+                return query.OrderByDescending(m => m.StarRating).ToList();
             });
         }
 
