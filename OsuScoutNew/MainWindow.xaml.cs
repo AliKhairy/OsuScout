@@ -202,7 +202,7 @@ namespace OsuScoutNew
             try
             {
                 // This URL should point to your new GitHub repository once you create it
-                var mgr = new UpdateManager("https://github.com/YOUR_USERNAME/OsuScoutNew");
+                var mgr = new UpdateManager("https://github.com/AliKhairy/OsuScout");
                 
                 var newVersion = await mgr.CheckForUpdatesAsync();
                 if (newVersion != null)
