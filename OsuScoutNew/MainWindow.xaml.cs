@@ -137,6 +137,9 @@ namespace OsuScoutNew
 
         private async void UpdateGrid()
         {
+            if (SearchBox == null || TagSearchBox == null || StarSlider == null || BpmSlider == null || LengthSlider == null || _libraryService == null)
+                return;
+
             string searchText = SearchBox.Text.ToLower().Trim();
             string tagText = TagSearchBox.Text.ToLower().Trim();
             double minStars = StarSlider.LowerValue;
