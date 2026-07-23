@@ -129,7 +129,7 @@ namespace OsuScoutNew
 
         private void TagSearchBox_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e) => UpdateGrid();
 
-        private void Slider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        private void Slider_ValueChanged(object sender, RoutedEventArgs e)
         {
             if (SearchBox != null) UpdateGrid();
         }
@@ -138,9 +138,12 @@ namespace OsuScoutNew
         {
             string searchText = SearchBox.Text.ToLower().Trim();
             string tagText = TagSearchBox.Text.ToLower().Trim();
-            double minStars = StarSlider.Value;
-            double minBpm = BpmSlider.Value;
-            double maxLength = LengthSlider.Value;
+            double minStars = StarSlider.LowerValue;
+            double maxStars = StarSlider.UpperValue;
+            double minBpm = BpmSlider.LowerValue;
+            double maxBpm = BpmSlider.UpperValue;
+            double minLength = LengthSlider.LowerValue;
+            double maxLength = LengthSlider.UpperValue;
 
             var tagQueries = tagText.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
                                     .Select(t => t.Trim())
@@ -151,7 +154,8 @@ namespace OsuScoutNew
                                          .Select(t => t.Substring(1).Trim())
                                          .ToList();
 
-            var results = await _libraryService.SearchBeatmapsAsync(searchText, requiredTags, excludedTags, minStars, minBpm, maxLength);
+            // Needs to be updated in OsuLibraryService to accept min and max for all properties
+            var results = await _libraryService.SearchBeatmapsAsync(searchText, requiredTags, excludedTags, minStars, maxStars, minBpm, maxBpm, minLength, maxLength);
             BeatmapGrid.ItemsSource = results;
         }
 

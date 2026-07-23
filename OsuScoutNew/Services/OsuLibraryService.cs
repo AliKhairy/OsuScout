@@ -1,4 +1,4 @@
-﻿using OsuScout;
+using OsuScout;
 using Rosu;
 using Rosu.Net;
 using Rosu.Net.Attributes;
@@ -23,16 +23,16 @@ namespace OsuScoutNew.Services
         }
 
         // --- DATABASE QUERYING ---
-        public async Task<List<BeatmapRecord>> SearchBeatmapsAsync(string searchText, List<string> requiredTags, List<string> excludedTags, double minStars, double minBpm, double maxLength)
+        public async Task<List<BeatmapRecord>> SearchBeatmapsAsync(string searchText, List<string> requiredTags, List<string> excludedTags, double minStars, double maxStars, double minBpm, double maxBpm, double minLength, double maxLength)
         {
             return await Task.Run(() =>
             {
                 using var db = new OsuDbContext();
                 var query = db.Beatmaps.AsQueryable();
 
-                if (minStars > 0) query = query.Where(m => m.StarRating >= minStars);
-                if (minBpm > 0) query = query.Where(m => m.BPM >= minBpm);
-                if (maxLength < 10) query = query.Where(m => m.LengthSeconds <= (maxLength * 60));
+                query = query.Where(m => m.StarRating >= minStars && m.StarRating <= maxStars);
+                query = query.Where(m => m.BPM >= minBpm && m.BPM <= maxBpm);
+                query = query.Where(m => m.LengthSeconds >= (minLength * 60) && m.LengthSeconds <= (maxLength * 60));
 
                 if (!string.IsNullOrEmpty(searchText))
                 {
