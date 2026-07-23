@@ -90,6 +90,7 @@ namespace OsuScoutNew
             ProgressPanel.Visibility = Visibility.Collapsed;
             HotkeyPanel.Visibility = Visibility.Visible;
             PlayButton.IsEnabled = true;
+            UpdateGrid();
         }
 
         private void HandleGameStateChange(OsuMemoryStatus status)
@@ -169,6 +170,15 @@ namespace OsuScoutNew
 
         private void BeatmapGrid_MouseDoubleClick(object sender, MouseButtonEventArgs e) => LaunchSelectedMap();
 
+        private void DonateButton_Click(object sender, RoutedEventArgs e)
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "https://github.com/sponsors/AliKhairy",
+                UseShellExecute = true
+            });
+        }
+
         private void ChangeFolderButton_Click(object sender, RoutedEventArgs e)
         {
             var dialog = new Microsoft.Win32.OpenFolderDialog();
@@ -216,8 +226,20 @@ namespace OsuScoutNew
                 var newVersion = await mgr.CheckForUpdatesAsync();
                 if (newVersion != null)
                 {
-                    await mgr.DownloadUpdatesAsync(newVersion);
-                    mgr.WaitExitThenApplyUpdates(newVersion);
+                    var result = MessageBox.Show(
+                        $"A new update ({newVersion.TargetFullRelease.Version}) is available!\n\nWould you like to download and restart the app now?\nIf you click No, it will silently download and update automatically after you close the app.", 
+                        "Update Available", MessageBoxButton.YesNo, MessageBoxImage.Information);
+
+                    if (result == MessageBoxResult.Yes)
+                    {
+                        await mgr.DownloadUpdatesAsync(newVersion);
+                        mgr.ApplyUpdatesAndRestart(newVersion);
+                    }
+                    else
+                    {
+                        await mgr.DownloadUpdatesAsync(newVersion);
+                        mgr.WaitExitThenApplyUpdates(newVersion);
+                    }
                 }
             }
             catch (Exception ex)

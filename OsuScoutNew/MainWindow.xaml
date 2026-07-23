@@ -137,8 +137,8 @@
                     <TextBlock Text="ENGINE" Foreground="{StaticResource TextMutedBrush}" FontSize="13" FontWeight="Bold" Margin="5,0,0,0" VerticalAlignment="Center"/>
                 </StackPanel>
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button Content="💖 DONATE" Foreground="#FF69B4" Style="{StaticResource ChromeButton}" Width="65" FontSize="10" Click="DonateButton_Click" Margin="0,0,10,0" ToolTip="Support the developer"/>
                     <Button Content="⚙ DIR" Style="{StaticResource ChromeButton}" Width="45" FontSize="10" Click="ChangeFolderButton_Click" Margin="0,0,10,0" ToolTip="Change Songs Folder"/>
-
                     <Button Content="—" Style="{StaticResource ChromeButton}" Click="MinimizeButton_Click" Margin="0,0,4,0"/>
                     <Button Content="✕" Style="{StaticResource ChromeButton}" Foreground="#FA5252" Click="CloseButton_Click"/>
                 </StackPanel>
@@ -204,6 +204,7 @@
                         <mah:RangeSlider x:Name="LengthSlider" Minimum="1" Maximum="20" LowerValue="1" UpperValue="20" TickFrequency="1" IsSnapToTickEnabled="True" LowerValueChanged="Slider_ValueChanged" UpperValueChanged="Slider_ValueChanged" Margin="0,5,0,0"/>
                     </StackPanel>
                 </Grid>
+                <TextBlock Text="💡 Tip: Hold Shift while clicking column headers to sort by multiple columns." Foreground="{StaticResource TextMutedBrush}" FontSize="10" HorizontalAlignment="Right" Margin="0,10,0,0" FontStyle="Italic"/>
             </StackPanel>
 
             <Border Grid.Row="2" Background="#14000000" CornerRadius="8" BorderBrush="#14FFFFFF" BorderThickness="1">
