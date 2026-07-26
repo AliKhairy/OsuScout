@@ -38,18 +38,23 @@ namespace OsuScoutNew
 
         public List<string> Predict(float[] rawFeatures)
         {
-            if (rawFeatures.Length != 90)
-                throw new ArgumentException($"Expected 90 features, but got {rawFeatures.Length}.");
+            // Feature count is driven by the trained model's scaler config, not a magic
+            // number. Retrain with more/fewer features -> regenerate model_config.json and
+            // this adapts automatically (FeatureExtractor must still produce the same count).
+            int featureCount = Config.scaler_mean.Count;
+
+            if (rawFeatures.Length != featureCount)
+                throw new ArgumentException($"Expected {featureCount} features, but got {rawFeatures.Length}.");
 
             // 1. Apply the Scaler Math
-            float[] scaledFeatures = new float[90];
-            for (int i = 0; i < 90; i++)
+            float[] scaledFeatures = new float[featureCount];
+            for (int i = 0; i < featureCount; i++)
             {
                 scaledFeatures[i] = (rawFeatures[i] - Config.scaler_mean[i]) / Config.scaler_scale[i];
             }
 
             // Prepare the raw tensor without a name yet
-            var inputTensor = new DenseTensor<float>(scaledFeatures, new[] { 1, 90 });
+            var inputTensor = new DenseTensor<float>(scaledFeatures, new[] { 1, featureCount });
             float[] ensembleProbs = new float[Config.tags.Count];
 
             // 2. Run Inference across the Ensemble

@@ -184,6 +184,31 @@ namespace OsuScout
                 if (dy > 120 && dx < 40) verticalJumps++;
             }
 
+            // True linear pattern detection (collinearity over 4-object chunks).
+            // Ported to match Python neural_model.extract_meaningful_features exactly.
+            // Computed in double to stay close to NumPy's float64 geometry.
+            int trueLinearSequences = 0;
+            if (numObjects >= 4)
+            {
+                for (int i = 0; i < numObjects - 3; i++)
+                {
+                    double sx = objects[i].X, sy = objects[i].Y;
+                    double ex = objects[i + 3].X, ey = objects[i + 3].Y;
+                    double lineVecX = ex - sx, lineVecY = ey - sy;
+                    double lineLen = Math.Sqrt(lineVecX * lineVecX + lineVecY * lineVecY);
+
+                    if (lineLen > 50) // sequence must cover some distance
+                    {
+                        double dirX = lineVecX / lineLen, dirY = lineVecY / lineLen;
+                        // Normal vector perpendicular to the line: (-dir.y, dir.x)
+                        double normX = -dirY, normY = dirX;
+                        double dev1 = Math.Abs((objects[i + 1].X - sx) * normX + (objects[i + 1].Y - sy) * normY);
+                        double dev2 = Math.Abs((objects[i + 2].X - sx) * normX + (objects[i + 2].Y - sy) * normY);
+                        if (dev1 < 15 && dev2 < 15) trueLinearSequences++;
+                    }
+                }
+            }
+
             return new float[]
             {
                 burstCount, streamCount, maxContinuousStream, totalStreamNotes,
@@ -205,7 +230,7 @@ namespace OsuScout
                 numObjects > 0 ? (float)linearAngles / numObjects : 0,
                 numObjects > 0 ? (float)verticalJumps / numObjects : 0,
                 numObjects > 0 ? (float)perfectOverlaps / numObjects : 0,
-                0 // True linear sequence logic removed for brevity/speed; default to 0 as it has marginal impact.
+                numObjects > 0 ? (float)trueLinearSequences / numObjects : 0 // Index 28: true linear sequences (now computed, matches Python)
             };
         }
 

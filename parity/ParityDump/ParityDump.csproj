@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <!-- Plain net10.0 (not -windows): the two shared files use only cross-platform
+         BCL APIs, so we avoid pulling in WPF. -->
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>ParityDump</AssemblyName>
+    <RootNamespace>ParityDump</RootNamespace>
+  </PropertyGroup>
+
+  <!-- Compile the ACTUAL production source, not copies, so parity always reflects
+       what the app really ships. -->
+  <ItemGroup>
+    <Compile Include="..\..\OsuScoutNew\OsuParser.cs" />
+    <Compile Include="..\..\OsuScoutNew\FeatureExtractor.cs" />
+  </ItemGroup>
+
+</Project>
