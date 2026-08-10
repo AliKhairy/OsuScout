@@ -17,9 +17,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to build (dry run only, e.g. 1.0.8-test)'
+        description: 'Version to build (dry run only, e.g. 9.9.9-dryrun)'
         required: true
-        default: '0.0.0-dryrun'
+        default: '9.9.9-dryrun'
 
 # CI only needs to read the repo. This job PUBLISHES, so it needs write access
 # to create the release and upload assets. That difference is the reason the two
