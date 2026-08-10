@@ -36,7 +36,12 @@ namespace OsuScoutNew.Services
 
                 if (!string.IsNullOrEmpty(searchText))
                 {
-                    query = query.Where(m => m.Title.Contains(searchText) || m.Artist.Contains(searchText));
+                    // SQLite's instr() (what Contains translates to) is case-sensitive, so both
+                    // sides must be lowered or a query like "sugar life" never matches "Sugar Life".
+                    string needle = searchText.ToLowerInvariant();
+                    query = query.Where(m => m.Title.ToLower().Contains(needle)
+                                          || m.Artist.ToLower().Contains(needle)
+                                          || m.Version.ToLower().Contains(needle));
                 }
 
                 foreach (var tag in requiredTags) query = query.Where(m => m.Tags.Contains(tag));
@@ -90,7 +95,8 @@ namespace OsuScoutNew.Services
                         {
                             predictedTags = _classifier.Predict(networkInputs);
                         }
-                        if (predictedTags.Count == 0) return;
+                        // A map the model has no confident opinion on is still a map the user owns:
+                        // store it with no tags so it stays searchable instead of vanishing.
 
                         double calculatedStars = 0;
                         try
@@ -207,7 +213,7 @@ namespace OsuScoutNew.Services
                 {
                     predictedTags = _classifier.Predict(networkInputs);
                 }
-                if (predictedTags.Count == 0) return;
+                // Untagged maps are kept (see ScanLibraryAsync) so they remain searchable.
 
                 double calculatedStars = 0;
                 try
