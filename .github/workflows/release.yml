@@ -7,9 +7,19 @@ name: Release
 # The tag is the release trigger and the source of the version number, so there
 # is exactly one place a version is declared. Pattern matches the existing tag
 # convention (1.0.7, no leading "v").
+# It can also be run by hand from the Actions tab as a dry run: it builds,
+# verifies and packages exactly as a real release does, then stops before
+# uploading. Nothing reaches users. Use it to prove a change to this file works
+# before trusting it with a tag.
 on:
   push:
     tags: ['[0-9]+.[0-9]+.[0-9]+']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build (dry run only, e.g. 1.0.8-test)'
+        required: true
+        default: '0.0.0-dryrun'
 
 # CI only needs to read the repo. This job PUBLISHES, so it needs write access
 # to create the release and upload assets. That difference is the reason the two
@@ -33,20 +43,31 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: Derive version from the tag
+      - name: Determine version and whether this is a dry run
         id: version
         run: |
-          # github.ref_name is the tag that triggered this run, e.g. "1.0.8".
-          # Velopack requires a plain semver string, which is why the tag
-          # pattern above is strict about the format.
-          echo "version=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
-          echo "Releasing version ${GITHUB_REF_NAME}"
+          # A tag push is a real release; anything else is a manual dry run.
+          # Every later step reads these two outputs rather than re-deriving
+          # the condition, so there is one place that decides "are we shipping".
+          if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
+            # github.ref_name is the tag that triggered this run, e.g. "1.0.8".
+            # Velopack requires a plain semver string, which is why the tag
+            # pattern above is strict about the format.
+            echo "version=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+            echo "dry_run=false" >> "$GITHUB_OUTPUT"
+            echo "REAL RELEASE: ${GITHUB_REF_NAME} - this will reach users."
+          else
+            echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+            echo "dry_run=true" >> "$GITHUB_OUTPUT"
+            echo "DRY RUN: ${{ inputs.version }} - builds and packages, publishes nothing."
+          fi
 
       # Refuse to publish a version that already exists. Velopack clients use
       # the version to decide whether to update, so silently replacing the
       # assets under an existing tag would leave users stranded on whatever
       # they downloaded first, with no error anywhere.
       - name: Check the version is new
+        if: steps.version.outputs.dry_run == 'false'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -107,7 +128,11 @@ jobs:
       # existing users download a few MB instead of 180. Uploading through vpk
       # rather than `gh release create` is what keeps RELEASES and
       # releases.win.json - the files the updater actually reads - consistent.
+      # THE ONLY STEP THAT REACHES USERS. Everything above runs identically in a
+      # dry run; this is the single line of difference between rehearsal and
+      # release, which is what makes the rehearsal worth trusting.
       - name: Publish GitHub Release
+        if: steps.version.outputs.dry_run == 'false'
         run: |
           vpk upload github \
             --repoUrl https://github.com/AliKhairy/OsuScout \
@@ -116,8 +141,17 @@ jobs:
             --releaseName "OsuScout ${{ steps.version.outputs.version }}" \
             --publish
 
+      - name: Dry run summary
+        if: steps.version.outputs.dry_run == 'true'
+        run: |
+          echo "Dry run complete - nothing was published."
+          echo "Packages built:"
+          ls -lh Releases/
+          echo "Download them from the Artifacts section of this run to inspect."
+
       # Keep the packaged output even when a later step fails, so a broken
       # release can be inspected without reproducing the whole build locally.
+      # This is also how a dry run's packages get off the runner.
       - name: Upload packages as a build artifact
         if: always()
         uses: actions/upload-artifact@v7
