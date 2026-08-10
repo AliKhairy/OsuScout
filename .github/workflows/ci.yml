@@ -1,0 +1,92 @@
+# Continuous Integration for OsuScout.
+#
+# Two independent jobs run in PARALLEL on separate machines:
+#   build  (Windows) - the WPF app must compile
+#   parity (Linux)   - the C# feature extractor must still agree with the
+#                      golden vectors produced by the Python trainer
+#
+# The parity job is the one that matters most: the model is only valid if the
+# features computed at inference time match the ones computed during training.
+
+name: CI
+
+# WHEN this runs. Pushes to main catch anything that lands directly; pull_request
+# catches problems BEFORE they land, which is the whole point of CI.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch: # adds a "Run workflow" button in the Actions tab
+
+# Least privilege: this workflow only reads code. If it were ever compromised it
+# still could not push commits or publish releases.
+permissions:
+  contents: read
+
+# If you push twice quickly, cancel the older run instead of paying for a result
+# nobody will read. Grouped per branch so main and a PR never cancel each other.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build app (Windows)
+    # WPF targets net10.0-windows, which cannot restore or build on Linux.
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      # Cache downloaded NuGet packages between runs. The key includes a hash of
+      # every .csproj, so changing a PackageReference produces a new key and a
+      # fresh restore; restore-keys lets an older cache be reused as a starting
+      # point rather than downloading everything again.
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: ${{ runner.os }}-nuget-
+
+      - name: Restore
+        run: dotnet restore OsuScoutNew/OsuScoutNew.csproj
+
+      # --no-restore because the previous step already did it. Repeating work in
+      # CI is the most common reason pipelines get slow.
+      - name: Build
+        run: dotnet build OsuScoutNew/OsuScoutNew.csproj -c Release --no-restore
+
+  parity:
+    name: Feature parity (Linux)
+    # ParityDump deliberately targets plain net10.0, so it runs on Linux runners,
+    # which start faster and cost less than Windows ones.
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build ParityDump
+        run: dotnet build parity/ParityDump -c Release
+
+      # compare_parity.py uses only the standard library, so no pip install and no
+      # TensorFlow are needed here - that is why this job takes seconds. The Python
+      # side was run once, offline, and committed as parity/fixtures/*.python.json.
+      - name: Compare C# features against Python goldens
+        run: |
+          for style in stream jump tech; do
+            echo "::group::$style"
+            dotnet run --project parity/ParityDump -c Release --no-build -- \
+              "parity/fixtures/$style.osu" "/tmp/$style.cs.json"
+            python3 parity/compare_parity.py \
+              "parity/fixtures/$style.python.json" "/tmp/$style.cs.json"
+            echo "::endgroup::"
+          done

@@ -47,6 +47,31 @@ equality is impossible — expected differences are ~1e-5. The tolerance absorbs
 while still catching real logic drift (which shows up as large diffs). Override:
 `python parity/compare_parity.py py.json cs.json <atol> <rtol>`.
 
+## Golden fixtures and CI
+
+`.github/workflows/ci.yml` runs this check on every push and PR, but it does **not**
+run the Python side — installing TensorFlow on every commit would make CI slow enough
+that people stop paying attention to it. Instead the Python vectors were computed once
+and committed:
+
+| File | What it is |
+| --- | --- |
+| `fixtures/{stream,jump,tech}.osu` | three maps chosen for contrasting styles (deathstream / cross-screen jumps / tech) |
+| `fixtures/{stream,jump,tech}.python.json` | the golden Python feature vectors for those maps |
+
+CI builds `ParityDump`, runs it on each fixture, and compares against the golden.
+
+**The one rule: if you change the feature math in Python, you must regenerate the
+goldens.** Otherwise CI keeps comparing C# against a stale snapshot and passes while the
+two implementations have actually drifted. Regenerate from the training repo:
+
+```bash
+python make_goldens.py /path/to/OsuScoutNew/parity/fixtures
+```
+
+Regenerating is a deliberate, reviewable step - the diff on those JSON files is exactly
+the change in feature behaviour, and it should be inspected, not rubber-stamped.
+
 ## When to run
 
 Any time you change the feature math — **before** you retrain/export/ship. Add a
