@@ -71,7 +71,7 @@ namespace OsuScout
             int currentLen = 0;
             for (int i = 0; i < timeGaps.Length; i++)
             {
-                if (timeGaps[i] < 170 && distances[i] < 120)
+                if (timeGaps[i] < 165 && distances[i] < 120)
                 {
                     currentLen++;
                 }
@@ -95,7 +95,7 @@ namespace OsuScout
 
             for (int i = 0; i < timeGaps.Length; i++)
             {
-                if (timeGaps[i] < 170) denseIndices.Add(i);
+                if (timeGaps[i] < 165) denseIndices.Add(i);
             }
 
             float maxStreamSpacingVariance = 0;
