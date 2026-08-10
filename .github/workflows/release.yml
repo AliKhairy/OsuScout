@@ -114,7 +114,7 @@ jobs:
       # runtime library have to agree on the package format, so letting this
       # float would eventually produce packages the installed app cannot read.
       - name: Install Velopack CLI
-        run: dotnet tool install -g vpk --version 0.0.866
+        run: dotnet tool install -g vpk --version 0.0.866-g70566a3
 
       - name: Package
         run: |
