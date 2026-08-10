@@ -6,6 +6,73 @@ namespace OsuScout
 {
     public static class FeatureExtractor
     {
+        // --- TUNING CONSTANTS ---
+        //
+        // Every one of these is duplicated in neural_model.py in the training repo,
+        // under the SAME NAME. The model is trained on Python's numbers and runs on
+        // these, so a value that differs between the two silently corrupts every
+        // prediction - no crash, no error. Change one side, change the other, then
+        // run the parity harness (see parity/README.md) before shipping.
+
+        // Section splitting: a 2s pause reliably marks a gameplay break.
+        private const int BreakThresholdMs = 2000;
+        private const int MinSectionLength = 15;
+        private const int MinObjectsForFeatures = 5;
+        private const int SectionFeatureCount = 29;
+
+        // Stream/burst detection. The distance cap stops high-BPM cross-screen jumps
+        // from being counted as streams.
+        private const float StreamGapMs = 165f;
+        private const float StreamMaxSpacingPx = 120f;
+        private const int BurstMinLength = 3;
+        private const int BurstMaxLength = 7;
+        private const int StreamMinLength = 8;
+
+        // Buzz sliders: many repeats packed into a short pixel length.
+        private const int BuzzSliderMinSlides = 4;
+        private const float BuzzSliderMaxLengthPx = 100f;
+
+        // Global rhythm: ignore break-length gaps; a >15ms shift is a deliberate
+        // snap change (1/2 vs 1/3 vs 1/4).
+        private const float ActiveGapMaxMs = 750f;
+        private const float RhythmChangeMinDeltaMs = 15f;
+
+        // A slider wedged between two fast gaps disrupts tapping.
+        private const float SliderDisruptionGapMs = 160f;
+
+        // Hand-tuned weights for the composite finger-control score.
+        private const float FingerControlRhythmWeight = 1.2f;
+        private const float FingerControlSpacingWeight = 0.3f;
+        private const float FingerControlSliderWeight = 3.0f;
+
+        // Angle buckets, in radians (pi = 180 degrees). Note these do not tile the
+        // full range - angles falling between buckets are counted in none of them.
+        private const float AngleSharpMax = 1.04f;    // < ~60 deg  (snap / awkward)
+        private const float AngleSquareMin = 1.3f;    // ~90 deg    (square jumps)
+        private const float AngleSquareMax = 1.8f;
+        private const float AngleWideMin = 2.09f;     // > ~120 deg (flow aim)
+        private const float AngleWideMax = 2.6f;
+        private const float AngleLinearMin = 2.7f;    // ~180 deg   (linear / 1-2)
+
+        // Vertical jump: large Y movement with almost no X movement.
+        private const float VerticalJumpMinDyPx = 120f;
+        private const float VerticalJumpMaxDxPx = 40f;
+
+        // An object landing on top of where one sat two steps ago.
+        private const float PerfectOverlapMaxPx = 10f;
+
+        // Collinearity over 4-object chunks.
+        private const double LinearChunkMinLengthPx = 50.0;
+        private const double LinearMaxDeviationPx = 15.0;
+
+        // Map-level hybrid flags, applied to the max-pooled vector.
+        private const float PeakStreamMinLength = 12f;
+        private const float PeakJumpMinP95Px = 180f;
+
+        // Index of the aggregate features the hybrid flags read.
+        private const int IdxMaxContinuousStream = 2;
+        private const int IdxPercentile95Distance = 16;
+
         // 1. The Section Splitter
         public static List<List<RawHitObject>> SplitIntoSections(List<RawHitObject> hitObjects)
         {
@@ -13,8 +80,8 @@ namespace OsuScout
             if (hitObjects == null || hitObjects.Count == 0) return sections;
 
             var currentSection = new List<RawHitObject>();
-            int breakThreshold = 2000;
-            int minSectionLength = 15;
+            int breakThreshold = BreakThresholdMs;
+            int minSectionLength = MinSectionLength;
 
             for (int i = 0; i < hitObjects.Count; i++)
             {
@@ -39,8 +106,8 @@ namespace OsuScout
         // 2. The Core Feature Extraction (29 Features)
         public static float[] ExtractSectionFeatures(List<RawHitObject> objects)
         {
-            int featureCount = 29;
-            if (objects == null || objects.Count < 5) return new float[featureCount];
+            int featureCount = SectionFeatureCount;
+            if (objects == null || objects.Count < MinObjectsForFeatures) return new float[featureCount];
 
             int numObjects = objects.Count;
             float totalDuration = (objects.Last().Time - objects.First().Time) / 1000f;
@@ -71,7 +138,7 @@ namespace OsuScout
             int currentLen = 0;
             for (int i = 0; i < timeGaps.Length; i++)
             {
-                if (timeGaps[i] < 165 && distances[i] < 120)
+                if (timeGaps[i] < StreamGapMs && distances[i] < StreamMaxSpacingPx)
                 {
                     currentLen++;
                 }
@@ -83,10 +150,10 @@ namespace OsuScout
             }
             if (currentLen > 0) sequenceLengths.Add(currentLen + 1);
 
-            float burstCount = sequenceLengths.Count(l => l >= 3 && l <= 7);
-            float streamCount = sequenceLengths.Count(l => l >= 8);
+            float burstCount = sequenceLengths.Count(l => l >= BurstMinLength && l <= BurstMaxLength);
+            float streamCount = sequenceLengths.Count(l => l >= StreamMinLength);
             float maxContinuousStream = sequenceLengths.Count > 0 ? sequenceLengths.Max() : 0;
-            float totalStreamNotes = sequenceLengths.Where(l => l >= 8).Sum();
+            float totalStreamNotes = sequenceLengths.Where(l => l >= StreamMinLength).Sum();
 
             // Local Instability & Variances
             List<float> rhythmInstabilities = new List<float>();
@@ -95,7 +162,7 @@ namespace OsuScout
 
             for (int i = 0; i < timeGaps.Length; i++)
             {
-                if (timeGaps[i] < 165) denseIndices.Add(i);
+                if (timeGaps[i] < StreamGapMs) denseIndices.Add(i);
             }
 
             float maxStreamSpacingVariance = 0;
@@ -104,7 +171,7 @@ namespace OsuScout
                 var groups = SplitConsecutive(denseIndices);
                 foreach (var group in groups)
                 {
-                    if (group.Count >= 8)
+                    if (group.Count >= StreamMinLength)
                     {
                         var groupDistances = group.Select(idx => distances[idx]).ToArray();
                         maxStreamSpacingVariance = Math.Max(maxStreamSpacingVariance, CalculatePopStdDev(groupDistances));
@@ -117,9 +184,11 @@ namespace OsuScout
                 }
             }
 
-            float buzzSliderCount = objects.Count(o => isSlider[objects.IndexOf(o)] && o.Slides >= 4 && o.Length < 100);
+            float buzzSliderCount = objects.Count(o => isSlider[objects.IndexOf(o)]
+                                                       && o.Slides >= BuzzSliderMinSlides
+                                                       && o.Length < BuzzSliderMaxLengthPx);
 
-            var activeGaps = timeGaps.Where(g => g < 750).ToArray();
+            var activeGaps = timeGaps.Where(g => g < ActiveGapMaxMs).ToArray();
             float rhythmChangeRatio = 0;
             float globalRhythmVariance = 0;
             if (activeGaps.Length > 1)
@@ -127,7 +196,7 @@ namespace OsuScout
                 int changes = 0;
                 for (int i = 0; i < activeGaps.Length - 1; i++)
                 {
-                    if (Math.Abs(activeGaps[i + 1] - activeGaps[i]) > 15) changes++;
+                    if (Math.Abs(activeGaps[i + 1] - activeGaps[i]) > RhythmChangeMinDeltaMs) changes++;
                 }
                 rhythmChangeRatio = (float)changes / activeGaps.Length;
                 globalRhythmVariance = CalculatePopStdDev(activeGaps);
@@ -139,10 +208,12 @@ namespace OsuScout
             int sliderDisruptions = 0;
             for (int i = 1; i < numObjects - 1; i++)
             {
-                if (isSlider[i] && timeGaps[i - 1] < 160 && timeGaps[i] < 160) sliderDisruptions++;
+                if (isSlider[i] && timeGaps[i - 1] < SliderDisruptionGapMs && timeGaps[i] < SliderDisruptionGapMs) sliderDisruptions++;
             }
             float sliderDisruptionRate = (float)sliderDisruptions / numObjects;
-            float fingerControlScore = (avgRhythmInstability * 1.2f) + (avgSpacingInstability * 0.3f) + (sliderDisruptionRate * 3.0f);
+            float fingerControlScore = (avgRhythmInstability * FingerControlRhythmWeight)
+                                     + (avgSpacingInstability * FingerControlSpacingWeight)
+                                     + (sliderDisruptionRate * FingerControlSliderWeight);
 
             // Micro-patterns & Geometry
             float sliderRatio = (float)isSlider.Count(s => s) / numObjects;
@@ -167,21 +238,21 @@ namespace OsuScout
                     float angle = (float)Math.Acos(dot);
                     angles.Add(angle);
 
-                    if (angle < 1.04f) sharpAngles++;
-                    else if (angle > 1.3f && angle < 1.8f) squareAngles++;
-                    else if (angle > 2.09f && angle < 2.6f) wideAngles++;
-                    else if (angle > 2.7f) linearAngles++;
+                    if (angle < AngleSharpMax) sharpAngles++;
+                    else if (angle > AngleSquareMin && angle < AngleSquareMax) squareAngles++;
+                    else if (angle > AngleWideMin && angle < AngleWideMax) wideAngles++;
+                    else if (angle > AngleLinearMin) linearAngles++;
                 }
 
                 float dist2Steps = (float)Math.Sqrt(Math.Pow(objects[i + 2].X - objects[i].X, 2) + Math.Pow(objects[i + 2].Y - objects[i].Y, 2));
-                if (dist2Steps < 10) perfectOverlaps++;
+                if (dist2Steps < PerfectOverlapMaxPx) perfectOverlaps++;
             }
 
             for (int i = 0; i < numObjects - 1; i++)
             {
                 float dx = Math.Abs(objects[i + 1].X - objects[i].X);
                 float dy = Math.Abs(objects[i + 1].Y - objects[i].Y);
-                if (dy > 120 && dx < 40) verticalJumps++;
+                if (dy > VerticalJumpMinDyPx && dx < VerticalJumpMaxDxPx) verticalJumps++;
             }
 
             // True linear pattern detection (collinearity over 4-object chunks).
@@ -197,14 +268,14 @@ namespace OsuScout
                     double lineVecX = ex - sx, lineVecY = ey - sy;
                     double lineLen = Math.Sqrt(lineVecX * lineVecX + lineVecY * lineVecY);
 
-                    if (lineLen > 50) // sequence must cover some distance
+                    if (lineLen > LinearChunkMinLengthPx) // sequence must cover some distance
                     {
                         double dirX = lineVecX / lineLen, dirY = lineVecY / lineLen;
                         // Normal vector perpendicular to the line: (-dir.y, dir.x)
                         double normX = -dirY, normY = dirX;
                         double dev1 = Math.Abs((objects[i + 1].X - sx) * normX + (objects[i + 1].Y - sy) * normY);
                         double dev2 = Math.Abs((objects[i + 2].X - sx) * normX + (objects[i + 2].Y - sy) * normY);
-                        if (dev1 < 15 && dev2 < 15) trueLinearSequences++;
+                        if (dev1 < LinearMaxDeviationPx && dev2 < LinearMaxDeviationPx) trueLinearSequences++;
                     }
                 }
             }
@@ -253,8 +324,8 @@ namespace OsuScout
                 std[i] = CalculatePopStdDev(col);
             }
 
-            float hasPeakStream = max[2] >= 12 ? 1 : 0;
-            float hasPeakJump = max[16] > 180 ? 1 : 0;
+            float hasPeakStream = max[IdxMaxContinuousStream] >= PeakStreamMinLength ? 1 : 0;
+            float hasPeakJump = max[IdxPercentile95Distance] > PeakJumpMinP95Px ? 1 : 0;
             float isHybrid = (hasPeakStream == 1 && hasPeakJump == 1) ? 1 : 0;
 
             var finalFeatures = new List<float>();
