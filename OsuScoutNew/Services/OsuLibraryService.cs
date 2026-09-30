@@ -30,9 +30,15 @@ namespace OsuScoutNew.Services
                 using var db = new OsuDbContext();
                 var query = db.Beatmaps.AsQueryable();
 
-                query = query.Where(m => m.StarRating >= minStars && m.StarRating <= maxStars);
-                query = query.Where(m => m.BPM >= minBpm && m.BPM <= maxBpm);
-                query = query.Where(m => m.LengthSeconds >= (minLength * 60) && m.LengthSeconds <= (maxLength * 60));
+                // An infinite bound means "no limit", so it's left out of the SQL entirely.
+                double minSeconds = minLength * 60;
+                double maxSeconds = maxLength * 60;
+                if (!double.IsInfinity(minStars)) query = query.Where(m => m.StarRating >= minStars);
+                if (!double.IsInfinity(maxStars)) query = query.Where(m => m.StarRating <= maxStars);
+                if (!double.IsInfinity(minBpm)) query = query.Where(m => m.BPM >= minBpm);
+                if (!double.IsInfinity(maxBpm)) query = query.Where(m => m.BPM <= maxBpm);
+                if (!double.IsInfinity(minSeconds)) query = query.Where(m => m.LengthSeconds >= minSeconds);
+                if (!double.IsInfinity(maxSeconds)) query = query.Where(m => m.LengthSeconds <= maxSeconds);
 
                 if (!string.IsNullOrEmpty(searchText))
                 {
