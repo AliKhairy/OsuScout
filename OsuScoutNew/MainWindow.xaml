@@ -46,6 +46,16 @@
             </Setter>
         </Style>
 
+        <!-- Small ✕ next to a filter's value that puts the slider back to "ANY" -->
+        <Style x:Key="ResetButton" TargetType="Button" BasedOn="{StaticResource ChromeButton}">
+            <Setter Property="Width" Value="14"/>
+            <Setter Property="Height" Value="14"/>
+            <Setter Property="FontSize" Value="8"/>
+            <Setter Property="Margin" Value="4,0,0,0"/>
+            <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}"/>
+            <Setter Property="Visibility" Value="Hidden"/>
+        </Style>
+
         <!-- Primary action button (Inject Selection) -->
         <Style x:Key="PrimaryButton" TargetType="Button">
             <Setter Property="Background" Value="{StaticResource AccentBrush}"/>
@@ -172,36 +182,38 @@
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
 
+                    <!-- Each filter's value text is filled in by UpdateFilterLabels(). A handle parked at
+                         the end of its track means "no limit", shown as "ANY", "UP TO x" or "x+". -->
                     <StackPanel Grid.Column="0" Margin="0,0,10,0">
-                        <TextBlock Foreground="{StaticResource TextSecondaryBrush}" FontSize="10" FontWeight="Bold">
-                            <Run Text="STARS: "/>
-                            <Run Text="{Binding LowerValue, ElementName=StarSlider, StringFormat={}{0:F1}}"/>
-                            <Run Text="★ - "/>
-                            <Run Text="{Binding UpperValue, ElementName=StarSlider, StringFormat={}{0:F1}}"/>
-                            <Run Text="★"/>
-                        </TextBlock>
-                        <mah:RangeSlider x:Name="StarSlider" Minimum="0" Maximum="10" LowerValue="0" UpperValue="10" TickFrequency="0.5" IsSnapToTickEnabled="True" LowerValueChanged="Slider_ValueChanged" UpperValueChanged="Slider_ValueChanged" Margin="0,5,0,0"/>
+                        <DockPanel>
+                            <Button x:Name="StarResetButton" DockPanel.Dock="Right" Content="✕" Style="{StaticResource ResetButton}"
+                                    Tag="{Binding ElementName=StarSlider}" Click="ResetSlider_Click" ToolTip="Clear star filter"/>
+                            <TextBlock x:Name="StarValueText" DockPanel.Dock="Right" FontSize="10" FontWeight="Bold" VerticalAlignment="Center"/>
+                            <TextBlock Text="STARS" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10" FontWeight="Bold" VerticalAlignment="Center"/>
+                        </DockPanel>
+                        <mah:RangeSlider x:Name="StarSlider" Minimum="0" Maximum="10" MinRange="0.5" LowerValue="0" UpperValue="10" TickFrequency="0.5" IsSnapToTickEnabled="True" LowerValueChanged="Slider_ValueChanged" UpperValueChanged="Slider_ValueChanged" Margin="0,5,0,0"/>
                     </StackPanel>
 
                     <StackPanel Grid.Column="1" Margin="5,0,5,0">
-                        <TextBlock Foreground="{StaticResource TextSecondaryBrush}" FontSize="10" FontWeight="Bold">
-                            <Run Text="BPM: "/>
-                            <Run Text="{Binding LowerValue, ElementName=BpmSlider, StringFormat={}{0:F0}}"/>
-                            <Run Text=" - "/>
-                            <Run Text="{Binding UpperValue, ElementName=BpmSlider, StringFormat={}{0:F0}}"/>
-                        </TextBlock>
-                        <mah:RangeSlider x:Name="BpmSlider" Minimum="0" Maximum="300" LowerValue="0" UpperValue="300" TickFrequency="10" IsSnapToTickEnabled="True" LowerValueChanged="Slider_ValueChanged" UpperValueChanged="Slider_ValueChanged" Margin="0,5,0,0"/>
+                        <DockPanel>
+                            <Button x:Name="BpmResetButton" DockPanel.Dock="Right" Content="✕" Style="{StaticResource ResetButton}"
+                                    Tag="{Binding ElementName=BpmSlider}" Click="ResetSlider_Click" ToolTip="Clear BPM filter"/>
+                            <TextBlock x:Name="BpmValueText" DockPanel.Dock="Right" FontSize="10" FontWeight="Bold" VerticalAlignment="Center"/>
+                            <TextBlock Text="BPM" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10" FontWeight="Bold" VerticalAlignment="Center"/>
+                        </DockPanel>
+                        <mah:RangeSlider x:Name="BpmSlider" Minimum="0" Maximum="300" MinRange="10" LowerValue="0" UpperValue="300" TickFrequency="10" IsSnapToTickEnabled="True" LowerValueChanged="Slider_ValueChanged" UpperValueChanged="Slider_ValueChanged" Margin="0,5,0,0"/>
                     </StackPanel>
 
                     <StackPanel Grid.Column="2" Margin="10,0,0,0">
-                        <TextBlock Foreground="{StaticResource TextSecondaryBrush}" FontSize="10" FontWeight="Bold">
-                            <Run Text="LENGTH: "/>
-                            <Run Text="{Binding LowerValue, ElementName=LengthSlider}"/>
-                            <Run Text=" - "/>
-                            <Run Text="{Binding UpperValue, ElementName=LengthSlider}"/>
-                            <Run Text=" MINS"/>
-                        </TextBlock>
-                        <mah:RangeSlider x:Name="LengthSlider" Minimum="1" Maximum="20" LowerValue="1" UpperValue="20" TickFrequency="1" IsSnapToTickEnabled="True" LowerValueChanged="Slider_ValueChanged" UpperValueChanged="Slider_ValueChanged" Margin="0,5,0,0"/>
+                        <DockPanel>
+                            <Button x:Name="LengthResetButton" DockPanel.Dock="Right" Content="✕" Style="{StaticResource ResetButton}"
+                                    Tag="{Binding ElementName=LengthSlider}" Click="ResetSlider_Click" ToolTip="Clear length filter"/>
+                            <TextBlock x:Name="LengthValueText" DockPanel.Dock="Right" FontSize="10" FontWeight="Bold" VerticalAlignment="Center"/>
+                            <TextBlock Text="LENGTH" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10" FontWeight="Bold" VerticalAlignment="Center"/>
+                        </DockPanel>
+                        <!-- Starts at 0 and keeps the handles a minute apart, so dragging the right handle all the
+                             way left lands on "UP TO 1 MIN" (short / cut-ver maps) -->
+                        <mah:RangeSlider x:Name="LengthSlider" Minimum="0" Maximum="20" MinRange="1" LowerValue="0" UpperValue="20" TickFrequency="1" IsSnapToTickEnabled="True" LowerValueChanged="Slider_ValueChanged" UpperValueChanged="Slider_ValueChanged" Margin="0,5,0,0"/>
                     </StackPanel>
                 </Grid>
                 <TextBlock Text="💡 Tip: Hold Shift while clicking column headers to sort by multiple columns." Foreground="{StaticResource TextMutedBrush}" FontSize="10" HorizontalAlignment="Right" Margin="0,10,0,0" FontStyle="Italic"/>

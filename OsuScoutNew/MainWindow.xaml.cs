@@ -3,15 +3,18 @@ using OsuMemoryDataProvider.OsuMemoryModels;
 using OsuScout;
 using OsuScoutNew.Services;
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Media;
 using System.Windows.Interop;
 using System.Threading.Tasks;
 using Velopack;
 using Velopack.Sources;
 using System.ComponentModel;
 using System.Windows.Controls;
+using MahApps.Metro.Controls;
 
 namespace OsuScoutNew
 {
@@ -26,10 +29,24 @@ namespace OsuScoutNew
         private OsuLibraryService _libraryService;
         private OsuLiveTrackerService _liveTrackerService;
 
+        // DataGrid wipes its sort every time ItemsSource is replaced, which UpdateGrid does on every
+        // filter change, so the sort lives here and is reapplied after each refresh.
+        private List<SortDescription> _sort = new List<SortDescription>();
+        private bool _restoringSettings;
+
+        // Above this are gimmick maps (Aspire and the like) that would otherwise fill the top of a
+        // stars-descending list. They only show up when the user searches for one by name.
+        private const double GimmickStarThreshold = 15;
+
         public MainWindow()
         {
             InitializeComponent();
-            _osuSongsPath = OsuLocationService.FindOsuSongsFolder();
+            var settings = SettingsService.Load();
+
+            // A folder picked with ⚙ DIR wins; auto-detection is only the fallback.
+            _osuSongsPath = System.IO.Directory.Exists(settings.SongsFolder)
+                ? settings.SongsFolder
+                : OsuLocationService.FindOsuSongsFolder();
 
             _classifier = new OsuClassifier();
             _classifier.Initialize();
@@ -42,16 +59,27 @@ namespace OsuScoutNew
             this.Loaded += MainWindow_Loaded;
             this.Closed += MainWindow_Closed;
 
+            // Scan on every launch, not just the first: the folder watcher only sees maps added
+            // while the app is open. ScanLibraryAsync skips files already in the DB, so this only
+            // processes maps that are new since last time.
+            // The exception is a library that came from a different folder. Older versions didn't
+            // save a folder picked with ⚙ DIR, so auto-detection can land somewhere else, and
+            // scanning that would mix two libraries (or report osu! missing on every launch).
+            // The library always comes from one folder (changing folder wipes it), so one map is
+            // enough to tell.
+            string anyMap;
             using (var db = new OsuDbContext())
             {
                 db.Database.EnsureCreated();
-                if (!db.Beatmaps.Any())
-                {
-                    RunBackgroundScan();
-                }
+                anyMap = db.Beatmaps.Select(b => b.FilePath).FirstOrDefault();
             }
+            bool libraryIsFromThisFolder = anyMap == null
+                || (_osuSongsPath != null && anyMap.StartsWith(_osuSongsPath, StringComparison.OrdinalIgnoreCase));
+            if (libraryIsFromThisFolder) RunBackgroundScan();
 
             TagSearchBox.ItemsSource = _classifier.Config.tags;
+            RestoreSettings(settings);
+            UpdateFilterLabels();
             UpdateGrid();
 
             // --- MEMORY SERVICE WIRING ---
@@ -135,22 +163,62 @@ namespace OsuScoutNew
 
         private void Slider_ValueChanged(object sender, RoutedEventArgs e)
         {
+            UpdateFilterLabels();
             if (SearchBox != null) UpdateGrid();
+        }
+
+        private void ResetSlider_Click(object sender, RoutedEventArgs e)
+        {
+            if ((sender as FrameworkElement)?.Tag is RangeSlider slider)
+            {
+                slider.UpperValue = slider.Maximum;
+                slider.LowerValue = slider.Minimum;
+            }
+        }
+
+        private void UpdateFilterLabels()
+        {
+            // Slider events fire during InitializeComponent, before every control exists yet.
+            if (LengthSlider == null) return;
+
+            ShowRange(StarSlider, StarValueText, StarResetButton, v => $"{v:0.#}★", "");
+            ShowRange(BpmSlider, BpmValueText, BpmResetButton, v => $"{v:0}", "");
+            ShowRange(LengthSlider, LengthValueText, LengthResetButton, v => $"{v:0}", " MIN");
+        }
+
+        // Describes a range the way UpperBound/LowerBound filter it: a handle at the end of the
+        // track is "no limit", so both open reads "ANY" and one open end reads "UP TO x" or "x+".
+        private void ShowRange(RangeSlider slider, TextBlock label, Button reset, Func<double, string> format, string unit)
+        {
+            bool openLow = slider.LowerValue <= slider.Minimum;
+            bool openHigh = slider.UpperValue >= slider.Maximum;
+            bool active = !(openLow && openHigh);
+
+            if (!active) label.Text = "ANY";
+            else if (openLow) label.Text = $"UP TO {format(slider.UpperValue)}{unit}";
+            else if (openHigh) label.Text = $"{format(slider.LowerValue)}+{unit}";
+            else label.Text = $"{format(slider.LowerValue)} – {format(slider.UpperValue)}{unit}";
+
+            label.Foreground = (Brush)FindResource(active ? "AccentBrush" : "TextMutedBrush");
+            reset.Visibility = active ? Visibility.Visible : Visibility.Hidden;
         }
 
         private async void UpdateGrid()
         {
             if (SearchBox == null || TagSearchBox == null || StarSlider == null || BpmSlider == null || LengthSlider == null || _libraryService == null)
                 return;
+            // Each restored value fires its own change event; one refresh at the end is enough.
+            if (_restoringSettings) return;
 
             string searchText = SearchBox.Text.ToLower().Trim();
             string tagText = TagSearchBox.Text.ToLower().Trim();
-            double minStars = StarSlider.LowerValue;
-            double maxStars = StarSlider.UpperValue;
-            double minBpm = BpmSlider.LowerValue;
-            double maxBpm = BpmSlider.UpperValue;
-            double minLength = LengthSlider.LowerValue;
-            double maxLength = LengthSlider.UpperValue;
+            double minStars = LowerBound(StarSlider);
+            double maxStars = UpperBound(StarSlider);
+            if (double.IsPositiveInfinity(maxStars) && searchText.Length == 0) maxStars = GimmickStarThreshold;
+            double minBpm = LowerBound(BpmSlider);
+            double maxBpm = UpperBound(BpmSlider);
+            double minLength = LowerBound(LengthSlider);
+            double maxLength = UpperBound(LengthSlider);
 
             var tagQueries = tagText.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
                                     .Select(t => t.Trim())
@@ -164,7 +232,69 @@ namespace OsuScoutNew
             // Needs to be updated in OsuLibraryService to accept min and max for all properties
             var results = await _libraryService.SearchBeatmapsAsync(searchText, requiredTags, excludedTags, minStars, maxStars, minBpm, maxBpm, minLength, maxLength);
             BeatmapGrid.ItemsSource = results;
+            ApplySort();
         }
+
+        private void ApplySort()
+        {
+            BeatmapGrid.Items.SortDescriptions.Clear();
+            foreach (var column in BeatmapGrid.Columns)
+                column.SortDirection = null;
+
+            foreach (var sort in _sort)
+            {
+                var column = BeatmapGrid.Columns.FirstOrDefault(c => c.SortMemberPath == sort.PropertyName);
+                if (column == null) continue;
+
+                column.SortDirection = sort.Direction;
+                BeatmapGrid.Items.SortDescriptions.Add(sort);
+            }
+        }
+
+        private void RestoreSettings(AppSettings settings)
+        {
+            _restoringSettings = true;
+            SearchBox.Text = settings.SearchText ?? "";
+            TagSearchBox.Text = settings.TagText ?? "";
+            SetRange(StarSlider, settings.MinStars, settings.MaxStars);
+            SetRange(BpmSlider, settings.MinBpm, settings.MaxBpm);
+            SetRange(LengthSlider, settings.MinLength, settings.MaxLength);
+            _sort = (settings.Sort ?? new List<SortSetting>())
+                .Select(s => new SortDescription(s.Column, s.Descending ? ListSortDirection.Descending : ListSortDirection.Ascending))
+                .ToList();
+            _restoringSettings = false;
+        }
+
+        private void SaveSettings()
+        {
+            SettingsService.Save(new AppSettings
+            {
+                SongsFolder = _osuSongsPath,
+                SearchText = SearchBox.Text,
+                TagText = TagSearchBox.Text,
+                MinStars = Finite(LowerBound(StarSlider)),
+                MaxStars = Finite(UpperBound(StarSlider)),
+                MinBpm = Finite(LowerBound(BpmSlider)),
+                MaxBpm = Finite(UpperBound(BpmSlider)),
+                MinLength = Finite(LowerBound(LengthSlider)),
+                MaxLength = Finite(UpperBound(LengthSlider)),
+                Sort = _sort.Select(s => new SortSetting { Column = s.PropertyName, Descending = s.Direction == ListSortDirection.Descending }).ToList()
+            });
+        }
+
+        // null (open end) puts the handle at the end of the track, i.e. back to "no limit".
+        private static void SetRange(RangeSlider slider, double? lower, double? upper)
+        {
+            slider.UpperValue = upper ?? slider.Maximum;
+            slider.LowerValue = lower ?? slider.Minimum;
+        }
+
+        private static double? Finite(double bound) => double.IsInfinity(bound) ? null : bound;
+
+        // A handle parked at the end of its track means "no limit". Otherwise anything outside the
+        // track's range (under 1 minute, over 300 BPM, over 10 stars) could never be shown at all.
+        private static double LowerBound(RangeSlider s) => s.LowerValue <= s.Minimum ? double.NegativeInfinity : s.LowerValue;
+        private static double UpperBound(RangeSlider s) => s.UpperValue >= s.Maximum ? double.PositiveInfinity : s.UpperValue;
 
         private void PlayButton_Click(object sender, RoutedEventArgs e) => LaunchSelectedMap();
 
@@ -233,6 +363,7 @@ namespace OsuScoutNew
                     if (result == MessageBoxResult.Yes)
                     {
                         await mgr.DownloadUpdatesAsync(newVersion);
+                        SaveSettings(); // the restart exits without closing the window normally
                         mgr.ApplyUpdatesAndRestart(newVersion);
                     }
                     else
@@ -253,42 +384,29 @@ namespace OsuScoutNew
             e.Handled = true;
 
             var column = e.Column;
-            var sortDirection = column.SortDirection;
+            ListSortDirection? next;
 
             // 3-state sort: Ascending -> Descending -> None
-            if (sortDirection == null)
-                column.SortDirection = ListSortDirection.Ascending;
-            else if (sortDirection == ListSortDirection.Ascending)
-                column.SortDirection = ListSortDirection.Descending;
+            if (column.SortDirection == null)
+                next = ListSortDirection.Ascending;
+            else if (column.SortDirection == ListSortDirection.Ascending)
+                next = ListSortDirection.Descending;
             else
-                column.SortDirection = null;
+                next = null;
 
-            // Shift for multi-sort, but since they asked to sort multiple columns, 
+            // Shift for multi-sort, but since they asked to sort multiple columns,
             // if shift is NOT down, we clear the others
             var shiftDown = Keyboard.IsKeyDown(Key.LeftShift) || Keyboard.IsKeyDown(Key.RightShift);
 
             if (!shiftDown)
-            {
-                foreach (var c in BeatmapGrid.Columns)
-                {
-                    if (c != column)
-                    {
-                        c.SortDirection = null;
-                    }
-                }
-                BeatmapGrid.Items.SortDescriptions.Clear();
-            }
+                _sort.Clear();
+            else
+                _sort.RemoveAll(sd => sd.PropertyName == column.SortMemberPath);
 
-            var existing = BeatmapGrid.Items.SortDescriptions.FirstOrDefault(sd => sd.PropertyName == column.SortMemberPath);
-            if (existing.PropertyName != null)
-            {
-                BeatmapGrid.Items.SortDescriptions.Remove(existing);
-            }
+            if (next != null)
+                _sort.Add(new SortDescription(column.SortMemberPath, next.Value));
 
-            if (column.SortDirection != null)
-            {
-                BeatmapGrid.Items.SortDescriptions.Add(new SortDescription(column.SortMemberPath, column.SortDirection.Value));
-            }
+            ApplySort();
         }
 
         private void MainWindow_Closed(object sender, EventArgs e)
@@ -354,6 +472,7 @@ namespace OsuScoutNew
 
         protected override void OnClosed(EventArgs e)
         {
+            SaveSettings();
             _memoryService?.Dispose();
             _liveTrackerService?.Dispose();
             _classifier?.Dispose();
