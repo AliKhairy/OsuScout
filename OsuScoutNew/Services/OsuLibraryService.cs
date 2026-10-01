@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using OsuScout;
 using OsuScoutNew.Core;
 using Rosu;
@@ -72,6 +73,11 @@ namespace OsuScoutNew.Services
                 {
                     existingPaths = db.Beatmaps.Select(b => b.FilePath).ToHashSet();
                 }
+
+                // A map deleted or updated in lazer (an update is a new file, with a new hash)
+                // loses its file at lazer's next startup cleanup; drop its record with it.
+                // Stable libraries are left as they always were.
+                if (source.Kind == OsuClient.Lazer) PruneMissingFiles(source.Kind, existingPaths);
 
                 var filesToProcess = allOsuFiles.Where(f => !existingPaths.Contains(f)).ToArray();
                 if (filesToProcess.Length == 0) return;
@@ -150,6 +156,15 @@ namespace OsuScoutNew.Services
                     }
                 }
             });
+        }
+
+        private static void PruneMissingFiles(OsuClient client, IEnumerable<string> storedPaths)
+        {
+            var missing = storedPaths.Where(p => !File.Exists(p)).ToList();
+            if (missing.Count == 0) return;
+
+            using var db = new OsuDbContext(client);
+            db.Beatmaps.Where(b => missing.Contains(b.FilePath)).ExecuteDelete();
         }
 
         // The model's input vector, from whichever extractor its model_config.json

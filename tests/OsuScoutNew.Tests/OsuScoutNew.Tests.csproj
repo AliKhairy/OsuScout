@@ -19,6 +19,23 @@
     <ProjectReference Include="..\..\OsuScoutNew.Core\OsuScoutNew.Core.csproj" />
   </ItemGroup>
 
+  <!-- The app's scan pipeline, compiled from the production source like ParityDump
+       does, so tests can scan a stable and a lazer library end to end. None of these
+       files use WPF. Keep the package versions in step with OsuScoutNew.csproj. -->
+  <ItemGroup>
+    <Compile Include="..\..\OsuScoutNew\Database.cs" Link="App\Database.cs" />
+    <Compile Include="..\..\OsuScoutNew\OsuParser.cs" Link="App\OsuParser.cs" />
+    <Compile Include="..\..\OsuScoutNew\FeatureExtractor.cs" Link="App\FeatureExtractor.cs" />
+    <Compile Include="..\..\OsuScoutNew\FeatureExtractorV2.cs" Link="App\FeatureExtractorV2.cs" />
+    <Compile Include="..\..\OsuScoutNew\OsuClassifier.cs" Link="App\OsuClassifier.cs" />
+    <Compile Include="..\..\OsuScoutNew\Services\OsuLibraryService.cs" Link="App\OsuLibraryService.cs" />
+    <Compile Include="..\..\OsuScoutNew\Services\OsuLiveTrackerService.cs" Link="App\OsuLiveTrackerService.cs" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.9" />
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.13" />
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.27.0" />
+    <PackageReference Include="Rosu.Net" Version="1.0.4" />
+  </ItemGroup>
+
   <ItemGroup>
     <Using Include="Xunit" />
   </ItemGroup>

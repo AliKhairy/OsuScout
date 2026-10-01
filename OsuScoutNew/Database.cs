@@ -38,9 +38,12 @@ namespace OsuScout
         public static string FileName(OsuClient client) =>
             client == OsuClient.Lazer ? "osuscout-lazer.db" : "osuscout.db";
 
+        // Where the library files live. Only tests change it, so they never touch the real ones.
+        public static string DataFolder { get; set; } = System.IO.Path.Combine(System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData), "OsuScout");
+
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         {
-            string folder = System.IO.Path.Combine(System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData), "OsuScout");
+            string folder = DataFolder;
             System.IO.Directory.CreateDirectory(folder);
             string dbPath = System.IO.Path.Combine(folder, FileName(_client));
             optionsBuilder.UseSqlite($"Data Source={dbPath}");

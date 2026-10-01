@@ -8,6 +8,8 @@ internal static class RepoPaths
 
     public static string ParityFixtures => Path.Combine(Root, "parity", "fixtures");
 
+    public static string ModelAssets => Path.Combine(Root, "OsuScoutNew", "Assets");
+
     // Walk up from the test binary (tests/OsuScoutNew.Tests/bin/<cfg>/<tfm>) until
     // the folder holding the solution file.
     private static string FindRoot()
