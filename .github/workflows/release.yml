@@ -1,19 +1,31 @@
 name: Release
 
-# CI runs on every push. This runs only when you push a version tag:
+# Releases are driven by one line in OsuScoutNew/OsuScoutNew.csproj:
 #
-#     git tag 1.0.8 && git push origin 1.0.8
+#     <Version>1.1.1</Version>
 #
-# The tag is the release trigger and the source of the version number, so there
-# is exactly one place a version is declared. Pattern matches the existing tag
-# convention (1.0.7, no leading "v").
+# Bump it in a PR. When that PR merges, this workflow sees a version that has no
+# release yet and ships it. Merges that don't change the version only run CI.
+# So the decision "this ships" is a visible line in a reviewed diff, and the
+# version is declared in exactly one place.
+#
+# Why not "merge -> a workflow pushes a tag -> the tag triggers the release"?
+# Anything a workflow does with its own GITHUB_TOKEN does not trigger other
+# workflows (GitHub's guard against workflows endlessly triggering each other),
+# so a tag pushed that way would never start a release. The release has to
+# happen here, in the run the merge itself started.
+#
 # It can also be run by hand from the Actions tab as a dry run: it builds,
 # verifies and packages exactly as a real release does, then stops before
 # uploading. Nothing reaches users. Use it to prove a change to this file works
-# before trusting it with a tag.
+# before merging it.
 on:
   push:
-    tags: ['[0-9]+.[0-9]+.[0-9]+']
+    branches: [main]
+    # The version lives in the csproj, so a push that doesn't touch it cannot be
+    # a release. Filtering here skips the run entirely instead of spinning up a
+    # runner just to find there is nothing to do.
+    paths: ['OsuScoutNew/OsuScoutNew.csproj']
   workflow_dispatch:
     inputs:
       version:
@@ -28,9 +40,94 @@ on:
 permissions:
   contents: write
 
+# Two version bumps merged in quick succession must not publish side by side.
+# Queue them instead. Unlike CI, never cancel an older run: cancelling a release
+# halfway through upload could leave a half-published release that users see.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
+  # Deciding is cheap, building is not. This runs on Linux in seconds; the
+  # Windows build job below only starts if there is something to ship.
+  decide:
+    name: Is there a new version to ship?
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.decide.outputs.version }}
+      dry_run: ${{ steps.decide.outputs.dry_run }}
+      build: ${{ steps.decide.outputs.build }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # Every later step reads these outputs rather than re-deriving the
+      # condition, so there is one place that decides "are we shipping".
+      - name: Decide
+        id: decide
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # Name the repo explicitly rather than relying on gh reading it from
+          # the checked-out .git folder.
+          GH_REPO: ${{ github.repository }}
+          DRY_RUN_VERSION: ${{ inputs.version }}
+        run: |
+          if [ "${GITHUB_EVENT_NAME}" != "push" ]; then
+            echo "version=${DRY_RUN_VERSION}" >> "$GITHUB_OUTPUT"
+            echo "dry_run=true" >> "$GITHUB_OUTPUT"
+            echo "build=true" >> "$GITHUB_OUTPUT"
+            echo "DRY RUN: ${DRY_RUN_VERSION} - builds and packages, publishes nothing."
+            exit 0
+          fi
+
+          # Pull the text between <Version> and </Version> out of the csproj.
+          version=$(grep -o '<Version>[^<]*</Version>' OsuScoutNew/OsuScoutNew.csproj | sed 's/<[^>]*>//g')
+
+          # Velopack needs plain MAJOR.MINOR.PATCH. Catching a typo here is far
+          # better than catching it after users have downloaded it.
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::<Version> in OsuScoutNew.csproj is '${version}', expected e.g. 1.2.3"
+            exit 1
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "dry_run=false" >> "$GITHUB_OUTPUT"
+
+          # Every released version, in one API call. This must FAIL CLOSED: if
+          # the call errors (network, auth, rate limit), the step fails here and
+          # nothing ships. Asking "does release X exist?" and reading an error as
+          # "no" would publish on every GitHub hiccup.
+          released=$(gh release list --limit 1000 --json tagName --jq '.[].tagName')
+
+          # Already released: the csproj changed for some other reason (e.g. a
+          # package update). Not an error - there is just nothing to ship. Never
+          # re-upload an existing version either: users who already have it would
+          # never be offered the replacement.
+          if grep -qxF "$version" <<< "$released"; then
+            echo "build=false" >> "$GITHUB_OUTPUT"
+            echo "${version} is already released - nothing to ship."
+            exit 0
+          fi
+
+          # Velopack only ever updates users to a HIGHER version. Publishing a
+          # lower one would become GitHub's "latest" release while no installed
+          # copy would ever take it. sort -V orders version numbers correctly
+          # (1.10.0 after 1.9.0). Old "v1.0.2"-style tags are ignored.
+          highest_released=$(grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' <<< "$released" | sort -V | tail -n 1 || true)
+          if [ -n "$highest_released" ]; then
+            highest=$(printf '%s\n%s\n' "$highest_released" "$version" | sort -V | tail -n 1)
+            if [ "$highest" != "$version" ]; then
+              echo "::error::${version} is not higher than the latest release ${highest_released}. Bump <Version> past it."
+              exit 1
+            fi
+          fi
+
+          echo "build=true" >> "$GITHUB_OUTPUT"
+          echo "REAL RELEASE: ${highest_released:-none} -> ${version} - this will reach users."
+
   release:
     name: Build, package and publish
+    needs: decide
+    if: needs.decide.outputs.build == 'true'
     runs-on: windows-latest
     defaults:
       run:
@@ -42,39 +139,6 @@ jobs:
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.0.x'
-
-      - name: Determine version and whether this is a dry run
-        id: version
-        run: |
-          # A tag push is a real release; anything else is a manual dry run.
-          # Every later step reads these two outputs rather than re-deriving
-          # the condition, so there is one place that decides "are we shipping".
-          if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
-            # github.ref_name is the tag that triggered this run, e.g. "1.0.8".
-            # Velopack requires a plain semver string, which is why the tag
-            # pattern above is strict about the format.
-            echo "version=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
-            echo "dry_run=false" >> "$GITHUB_OUTPUT"
-            echo "REAL RELEASE: ${GITHUB_REF_NAME} - this will reach users."
-          else
-            echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
-            echo "dry_run=true" >> "$GITHUB_OUTPUT"
-            echo "DRY RUN: ${{ inputs.version }} - builds and packages, publishes nothing."
-          fi
-
-      # Refuse to publish a version that already exists. Velopack clients use
-      # the version to decide whether to update, so silently replacing the
-      # assets under an existing tag would leave users stranded on whatever
-      # they downloaded first, with no error anywhere.
-      - name: Check the version is new
-        if: steps.version.outputs.dry_run == 'false'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
-            echo "Release ${GITHUB_REF_NAME} already exists. Bump the version and tag again."
-            exit 1
-          fi
 
       - name: Restore
         run: dotnet restore OsuScoutNew/OsuScoutNew.csproj
@@ -120,29 +184,34 @@ jobs:
         run: |
           vpk pack \
             --packId OsuScoutNew \
-            --packVersion "${{ steps.version.outputs.version }}" \
+            --packVersion "${{ needs.decide.outputs.version }}" \
             --packDir publish \
             --mainExe OsuScoutNew.exe
 
-      # vpk builds the delta package by diffing against the previous release, so
-      # existing users download a few MB instead of 180. Uploading through vpk
-      # rather than `gh release create` is what keeps RELEASES and
-      # releases.win.json - the files the updater actually reads - consistent.
+      # Uploading through vpk rather than `gh release create` is what keeps
+      # RELEASES and releases.win.json - the files the updater actually reads -
+      # consistent. No delta package yet: vpk can only diff against a previous
+      # release that is in Releases/ locally, and this runner starts empty, so
+      # users download the full package on every update.
+      # --targetCommitish puts the new tag on the exact commit this run built.
+      # Without it GitHub tags whatever main points at when the upload finishes,
+      # which is a different commit if something else merged mid-build.
       # THE ONLY STEP THAT REACHES USERS. Everything above runs identically in a
       # dry run; this is the single line of difference between rehearsal and
       # release, which is what makes the rehearsal worth trusting.
       - name: Publish GitHub Release
-        if: steps.version.outputs.dry_run == 'false'
+        if: needs.decide.outputs.dry_run == 'false'
         run: |
           vpk upload github \
             --repoUrl https://github.com/AliKhairy/OsuScout \
             --token "${{ github.token }}" \
-            --tag "${{ steps.version.outputs.version }}" \
-            --releaseName "OsuScout ${{ steps.version.outputs.version }}" \
+            --tag "${{ needs.decide.outputs.version }}" \
+            --targetCommitish "${GITHUB_SHA}" \
+            --releaseName "OsuScout ${{ needs.decide.outputs.version }}" \
             --publish
 
       - name: Dry run summary
-        if: steps.version.outputs.dry_run == 'true'
+        if: needs.decide.outputs.dry_run == 'true'
         run: |
           echo "Dry run complete - nothing was published."
           echo "Packages built:"
@@ -156,7 +225,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: velopack-packages-${{ steps.version.outputs.version }}
+          name: velopack-packages-${{ needs.decide.outputs.version }}
           path: Releases/
           if-no-files-found: warn
           retention-days: 14
