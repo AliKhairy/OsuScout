@@ -1,6 +1,8 @@
-# OsuScout
+<img src="branding/scoutsu_256.png" width="96" alt="Scoutsu icon">
 
-OsuScout is a WPF-based tool designed for osu! players to analyze, track, and extract features from beatmaps and live gameplay using Machine Learning.
+# Scoutsu
+
+Scoutsu (formerly OsuScout) is a WPF-based tool designed for osu! players to analyze, track, and extract features from beatmaps and live gameplay using Machine Learning.
 
 ## Features
 - Real-time memory data reading from osu!
@@ -10,6 +12,6 @@ OsuScout is a WPF-based tool designed for osu! players to analyze, track, and ex
 
 ## Installation
 1. Go to the [Releases](https://github.com/AliKhairy/OsuScout/releases) page.
-2. Download the latest `Setup.exe`.
+2. Download `Scoutsu-Setup.exe` from the latest release.
 3. Run the setup file. The application will automatically install and launch!
 4. A shortcut will be created on your desktop and start menu.

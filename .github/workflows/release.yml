@@ -144,35 +144,41 @@ jobs:
         run: dotnet restore OsuScoutNew/OsuScoutNew.csproj
 
       # Self-contained: bundles the .NET runtime into the output, so users do
-      # not have to install .NET first. It is why the existing releases are
-      # ~180 MB, and changing it would break every installed copy.
+      # not have to install .NET first, and changing it would break every
+      # installed copy.
+      # Start from an empty folder. vpk packs EVERYTHING in it, and the copy
+      # rules in the csproj are "copy if newer" - so leftover files are both
+      # shipped and can win over the real ones. Up to 1.2.0 an old build was
+      # committed in publish/: it tripled the download (~235 MB vs ~75 MB) and
+      # made 1.2.0 ship the previous model instead of the one in Assets/.
       - name: Publish
         run: |
+          rm -rf publish
           dotnet publish OsuScoutNew/OsuScoutNew.csproj \
             -c Release \
             -r win-x64 \
             --self-contained true \
             -o publish
 
-      # Fail early and loudly if the ONNX models are missing from the build
-      # output. Without them the app installs fine and then cannot classify
-      # anything - a failure users would hit, not CI. They are copied via
-      # CopyToOutputDirectory in the csproj, which is easy to break by accident.
-      - name: Verify model assets are present
+      # Fail loudly unless the packaged model is EXACTLY the one in the repo.
+      # Checking only that the files exist let 1.2.0 ship a stale model: the
+      # files were there, just old. Byte-for-byte comparison against
+      # OsuScoutNew/Assets catches missing, stale and half-updated models.
+      - name: Verify the packaged model is the repo's model
         run: |
-          missing=0
-          for i in 1 2 3 4 5; do
-            if [ ! -f "publish/Assets/ensemble_model_${i}.onnx" ]; then
-              echo "Missing publish/Assets/ensemble_model_${i}.onnx"
-              missing=1
+          bad=0
+          for f in ensemble_model_1.onnx ensemble_model_2.onnx ensemble_model_3.onnx \
+                   ensemble_model_4.onnx ensemble_model_5.onnx model_config.json; do
+            if [ ! -f "publish/Assets/$f" ]; then
+              echo "::error::Missing publish/Assets/$f"
+              bad=1
+            elif ! cmp -s "OsuScoutNew/Assets/$f" "publish/Assets/$f"; then
+              echo "::error::publish/Assets/$f differs from OsuScoutNew/Assets/$f"
+              bad=1
             fi
           done
-          if [ ! -f "publish/Assets/model_config.json" ]; then
-            echo "Missing publish/Assets/model_config.json"
-            missing=1
-          fi
-          [ "$missing" -eq 0 ] || exit 1
-          echo "All 5 ONNX models and model_config.json are present."
+          [ "$bad" -eq 0 ] || exit 1
+          echo "All 5 ONNX models and model_config.json match OsuScoutNew/Assets byte for byte."
 
       # Pinned to the Velopack version in the csproj. The packaging tool and the
       # runtime library have to agree on the package format, so letting this
@@ -180,10 +186,17 @@ jobs:
       - name: Install Velopack CLI
         run: dotnet tool install -g vpk --version 0.0.866-g70566a3
 
+      # --packId is the app's identity: installed copies look for updates under
+      # it and it names the install folder. It must never change, or every
+      # existing user is silently cut off from updates. --packTitle is only the
+      # name people see (shortcuts, installer, Installed apps), so the app can be
+      # renamed freely; on update Velopack renames existing shortcuts to match.
       - name: Package
         run: |
           vpk pack \
             --packId OsuScoutNew \
+            --packTitle Scoutsu \
+            --icon OsuScoutNew/Assets/scoutsu.ico \
             --packVersion "${{ needs.decide.outputs.version }}" \
             --packDir publish \
             --mainExe OsuScoutNew.exe
@@ -207,8 +220,30 @@ jobs:
             --token "${{ github.token }}" \
             --tag "${{ needs.decide.outputs.version }}" \
             --targetCommitish "${GITHUB_SHA}" \
-            --releaseName "OsuScout ${{ needs.decide.outputs.version }}" \
+            --releaseName "Scoutsu ${{ needs.decide.outputs.version }}" \
             --publish
+
+      # vpk names the installer and portable zip after --packId, which has to
+      # stay OsuScoutNew (see Package). Rename them on the release instead, so
+      # the download people see is Scoutsu-Setup.exe. Safe because the updater
+      # never reads these two files - only releases.win.json and the .nupkg.
+      - name: Give the downloads the app's name
+        if: needs.decide.outputs.dry_run == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.decide.outputs.version }}
+        run: |
+          rename() {
+            url=$(gh release view "$VERSION" --json assets --jq ".assets[] | select(.name == \"$1\") | .apiUrl")
+            if [ -z "$url" ]; then
+              echo "::error::$1 not found on release $VERSION"
+              exit 1
+            fi
+            gh api -X PATCH "$url" -f name="$2" --jq '"renamed to " + .name'
+          }
+          rename OsuScoutNew-win-Setup.exe Scoutsu-Setup.exe
+          rename OsuScoutNew-win-Portable.zip Scoutsu-Portable.zip
 
       - name: Dry run summary
         if: needs.decide.outputs.dry_run == 'true'
