@@ -32,25 +32,32 @@ namespace OsuScoutNew.Core
 
         // No filter: the files have no extension. lazer either hard-links a file straight
         // to its final name (Created) or writes _<hash>_<guid> and renames it (Renamed).
+        // A file can also be reported before its content is written (Linux reports the
+        // create at once); one too short to judge is left undecided and looked at again
+        // when it is written to (Changed). Each file is decided, and reported, once.
         public IDisposable CreateWatcher(Action<string> onNewMapFile)
         {
-            var seen = new ConcurrentDictionary<string, byte>(StringComparer.OrdinalIgnoreCase);
+            var decided = new ConcurrentDictionary<string, byte>(StringComparer.OrdinalIgnoreCase);
             var watcher = new FileSystemWatcher(FilesFolder)
             {
                 IncludeSubdirectories = true,
-                NotifyFilter = NotifyFilters.FileName,
+                NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size,
                 EnableRaisingEvents = true
             };
 
             async void Consider(string path)
             {
-                if (!IsStoredFileName(Path.GetFileName(path)) || !seen.TryAdd(path, 0)) return;
-                if (await FileReadiness.WaitUntilReadableAsync(path, LetLazerIn) && IsMapFile(path))
-                    onNewMapFile(path);
+                if (!IsStoredFileName(Path.GetFileName(path)) || decided.ContainsKey(path)) return;
+                if (!await FileReadiness.WaitUntilReadableAsync(path, LetLazerIn)) return;
+
+                bool? isMap = SniffMap(path);
+                if (isMap == null || !decided.TryAdd(path, 0)) return;
+                if (isMap == true) onNewMapFile(path);
             }
 
             watcher.Created += (_, e) => Consider(e.FullPath);
             watcher.Renamed += (_, e) => Consider(e.FullPath);
+            watcher.Changed += (_, e) => Consider(e.FullPath);
             return watcher;
         }
 
@@ -62,24 +69,33 @@ namespace OsuScoutNew.Core
         public static bool IsStoredFileName(string name) =>
             name.Length == 64 && name.All(Uri.IsHexDigit);
 
-        public static bool IsMapFile(string path)
+        public static bool IsMapFile(string path) => SniffMap(path) == true;
+
+        // true: a map. false: not one. null: too short to tell yet, but what is there so far
+        // fits the start of a map (an empty file still being written, for instance).
+        public static bool? SniffMap(string path)
         {
             try
             {
                 using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, LetLazerIn);
                 var buffer = new byte[SniffBytes];
                 int read = stream.ReadAtLeast(buffer, SniffBytes, throwOnEndOfStream: false);
-                return HasOsuHeader(buffer.AsSpan(0, read));
+                var start = buffer.AsSpan(0, read);
+                if (HasOsuHeader(start)) return true;
+                return read < SniffBytes && Header.StartsWith(TextOf(start), StringComparison.Ordinal) ? null : false;
             }
             catch (IOException) { return false; }
             catch (UnauthorizedAccessException) { return false; }
         }
 
         // True for "osu file format v…", after an optional UTF-8 BOM and any leading whitespace.
-        public static bool HasOsuHeader(ReadOnlySpan<byte> start)
+        public static bool HasOsuHeader(ReadOnlySpan<byte> start) =>
+            TextOf(start).StartsWith(Header, StringComparison.Ordinal);
+
+        private static string TextOf(ReadOnlySpan<byte> start)
         {
             if (start.StartsWith(Utf8Bom)) start = start[Utf8Bom.Length..];
-            return Encoding.UTF8.GetString(start).TrimStart().StartsWith(Header, StringComparison.Ordinal);
+            return Encoding.UTF8.GetString(start).TrimStart();
         }
     }
 }

@@ -139,6 +139,51 @@ public class LazerFilesSourceTests
         }
     }
 
+    [Theory]
+    [InlineData("", null)]                                   // created, nothing written yet
+    [InlineData("osu fil", null)]                            // part of the header so far
+    [InlineData("﻿\r\nosu file format", null)]
+    [InlineData("osu file format v14\r\n", true)]
+    [InlineData("ID3", false)]                               // can never become a map
+    [InlineData("[Events]\r\n", false)]
+    public void ATooShortFileIsUndecidedOnlyIfItCouldStillBeAMap(string content, bool? expected)
+    {
+        using var folder = new TempFolder();
+        string path = folder.Write("file", content);
+
+        Assert.Equal(expected, LazerFilesSource.SniffMap(path));
+    }
+
+    [Fact]
+    public async Task WatcherReportsAMapWhoseContentArrivesAfterItsName()
+    {
+        using var lazer = new TempFolder();
+        FakeLazer.MakeDataFolder(lazer.Path);
+        byte[] content = Bytes("osu file format v14\r\n[General]\r\n");
+        string path = Path.Combine(lazer.Path, "files", LazerFilesSource.StoragePath(FakeLazer.Hash(content)));
+        Directory.CreateDirectory(Path.GetDirectoryName(path));
+        var reported = new ConcurrentQueue<string>();
+        var first = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        using (new LazerFilesSource(lazer.Path).CreateWatcher(p =>
+        {
+            reported.Enqueue(p);
+            first.TrySetResult(p);
+        }))
+        {
+            // The file exists, empty, long enough for the create to be looked at...
+            File.WriteAllBytes(path, Array.Empty<byte>());
+            await Task.Delay(QuietPeriod);
+            // ...and only then gets its content.
+            File.WriteAllBytes(path, content);
+
+            Assert.Equal(path, await first.Task.WaitAsync(EventTimeout));
+            await Task.Delay(QuietPeriod);
+        }
+
+        Assert.Single(reported);
+    }
+
     [Fact]
     public async Task WatcherIgnoresStoredFilesThatAreNotMaps()
     {
