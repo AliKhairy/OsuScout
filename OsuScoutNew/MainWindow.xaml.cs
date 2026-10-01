@@ -79,6 +79,7 @@ namespace OsuScoutNew
             }
             bool libraryIsFromThisFolder = anyMap == null
                 || (_osuSongsPath != null && anyMap.StartsWith(_osuSongsPath, StringComparison.OrdinalIgnoreCase));
+            ReportPreviousScanCrash();
             if (libraryIsFromThisFolder) RunBackgroundScan();
 
             TagSearchBox.ItemsSource = _classifier.Config.tags;
@@ -90,6 +91,26 @@ namespace OsuScoutNew
             _memoryService = new OsuMemoryService();
             _memoryService.GameStateChanged += HandleGameStateChange;
             _memoryService.StartPolling();
+        }
+
+        // A scan that took the whole app down leaves a log with no ending (see ScanLog). Say so
+        // once, skip the maps it was reading, and point at the log so the crash can be reported.
+        private static void ReportPreviousScanCrash()
+        {
+            var maps = ScanLog.RecoverFromCrash();
+            if (maps.Count == 0) return;
+
+            string list = string.Join("\n", maps.Take(12).Select(m => "• " + m));
+            if (maps.Count > 12) list += $"\n…and {maps.Count - 12} more";
+            var answer = MessageBox.Show(
+                "Scoutsu closed unexpectedly the last time it scanned your maps. It was reading these when it stopped:\n\n" +
+                list + "\n\n" +
+                "They'll be skipped from now on so the scan can finish.\n\n" +
+                "If you can, please report this at github.com/AliKhairy/OsuScout/issues and attach the file " +
+                "scan-previous.log. Open the folder with that file now?",
+                "Scoutsu", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+            if (answer == MessageBoxResult.Yes)
+                System.Diagnostics.Process.Start("explorer.exe", $"/select,\"{ScanLog.PreviousLogPath}\"");
         }
 
         private async void RunBackgroundScan()
@@ -121,7 +142,7 @@ namespace OsuScoutNew
                         ScanProgressBar.Value = percent;
                         ScanProgressText.Text = $"Updating tags for the new model... {percent}%";
                     });
-                    await _libraryService.RetagLibraryAsync(retagProgress);
+                    await _libraryService.RetagLibraryAsync(_osuSongsPath, retagProgress);
                     _taggedWithModel = _classifier.ModelId;
                     SaveSettings();
                 }
@@ -491,6 +512,7 @@ namespace OsuScoutNew
 
         protected override void OnClosed(EventArgs e)
         {
+            ScanLog.MarkAppClosed();
             SaveSettings();
             _memoryService?.Dispose();
             _liveTrackerService?.Dispose();
