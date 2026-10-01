@@ -30,7 +30,27 @@ namespace OsuScoutNew.Services
         [DllImport("user32.dll")]
         private static extern int ShowWindow(IntPtr hWnd, int nCmdShow);
 
+        [DllImport("user32.dll")]
+        public static extern IntPtr GetForegroundWindow();
+
+        [DllImport("user32.dll")]
+        private static extern bool IsIconic(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        private static extern bool IsWindow(IntPtr hWnd);
+
         // --- ENCAPSULATED LOGIC ---
+
+        // Brings a window to the front. A game in fullscreen minimises itself when it loses
+        // focus (lazer: MinimiseOnFocusLossInFullscreen), so it is restored first, but only
+        // then: restoring a window that isn't minimised can knock it out of fullscreen.
+        public static bool FocusWindow(IntPtr handle)
+        {
+            if (handle == IntPtr.Zero || !IsWindow(handle)) return false;
+            if (IsIconic(handle)) ShowWindow(handle, SW_RESTORE);
+            return SetForegroundWindow(handle);
+        }
+
         public static bool FocusOsuProcess(OsuClient client, IEnumerable<string> processNames)
         {
             try
@@ -41,8 +61,7 @@ namespace OsuScoutNew.Services
                     IntPtr handle = osuProcess.MainWindowHandle;
                     if (handle != IntPtr.Zero)
                     {
-                        ShowWindow(handle, SW_RESTORE);
-                        SetForegroundWindow(handle);
+                        FocusWindow(handle);
                         return true;
                     }
                 }

@@ -22,6 +22,8 @@ namespace OsuScoutNew
     public partial class MainWindow : Window
     {
         private bool _userManuallyHidden = false;
+        // The window that had focus when Alt+S showed this one (usually the game).
+        private IntPtr _returnFocusTo;
         private HwndSource _hwndSource;
         private OsuClassifier _classifier;
         private IBeatmapSource _source;
@@ -155,6 +157,21 @@ namespace OsuScoutNew
 
             ClientButton.Content = _client == OsuClient.Lazer ? "LAZER" : "STABLE";
             FolderButton.ToolTip = _client == OsuClient.Lazer ? "Change osu!lazer data folder" : "Change Songs Folder";
+        }
+
+        private void PinButton_Click(object sender, RoutedEventArgs e)
+        {
+            SetAlwaysOnTop(!Topmost);
+            SaveSettings();
+        }
+
+        private void SetAlwaysOnTop(bool onTop)
+        {
+            Topmost = onTop;
+            PinButton.Opacity = onTop ? 1 : 0.35;
+            PinButton.ToolTip = onTop
+                ? "Always on top: on. Click to let other windows cover Scoutsu"
+                : "Always on top: off. Click to keep Scoutsu above the game";
         }
 
         private void ClientButton_Click(object sender, RoutedEventArgs e)
@@ -356,6 +373,7 @@ namespace OsuScoutNew
         private void RestoreSettings(AppSettings settings)
         {
             _restoringSettings = true;
+            SetAlwaysOnTop(settings.AlwaysOnTop);
             SearchBox.Text = settings.SearchText ?? "";
             TagSearchBox.Text = settings.TagText ?? "";
             SetRange(StarSlider, settings.MinStars, settings.MaxStars);
@@ -385,7 +403,8 @@ namespace OsuScoutNew
                 MaxLength = Finite(UpperBound(LengthSlider)),
                 Sort = _sort.Select(s => new SortSetting { Column = s.PropertyName, Descending = s.Direction == ListSortDirection.Descending }).ToList(),
                 TaggedWithModel = _taggedWithModel,
-                LazerTaggedWithModel = _lazerTaggedWithModel
+                LazerTaggedWithModel = _lazerTaggedWithModel,
+                AlwaysOnTop = Topmost
             });
         }
 
@@ -569,6 +588,14 @@ namespace OsuScoutNew
                     {
                         MessageBox.Show("osu! is not currently running. The search query has been copied to your clipboard.");
                     }
+                    else if (_client == OsuClient.Lazer)
+                    {
+                        // Nothing hides the window when lazer starts playing, and a window on top
+                        // of fullscreen lazer fights it for the cursor and focus. Get out of the
+                        // way; Alt+S brings it back.
+                        _userManuallyHidden = true;
+                        this.Visibility = Visibility.Collapsed;
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -582,10 +609,16 @@ namespace OsuScoutNew
             if (this.Visibility == Visibility.Visible)
             {
                 _userManuallyHidden = true;
+                // Give focus back first: once this window is hidden, Windows no longer lets it
+                // choose who gets focus. A fullscreen game minimised itself when this window
+                // took focus, so it is restored too.
+                SystemInteropService.FocusWindow(_returnFocusTo);
                 this.Visibility = Visibility.Collapsed;
             }
             else
             {
+                // Remember where the user was, so hiding the window again puts them back.
+                _returnFocusTo = SystemInteropService.GetForegroundWindow();
                 _userManuallyHidden = false;
                 this.Visibility = Visibility.Visible;
                 this.WindowState = WindowState.Normal;
