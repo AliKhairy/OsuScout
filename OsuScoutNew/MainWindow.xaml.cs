@@ -26,6 +26,13 @@ namespace OsuScoutNew
         private OsuClassifier _classifier;
         private IBeatmapSource _source;
 
+        // Which client's library is shown, and the folders the user picked for each.
+        private OsuClient _client;
+        private string _songsFolder;
+        private string _lazerDataFolder;
+        private List<string> _gameProcessNames;
+        private bool _memoryPolling;
+
         private OsuMemoryService _memoryService;
         private OsuLibraryService _libraryService;
         private OsuLiveTrackerService _liveTrackerService;
@@ -35,8 +42,20 @@ namespace OsuScoutNew
         private List<SortDescription> _sort = new List<SortDescription>();
         private bool _restoringSettings;
 
-        // The model that produced the library's stored tags (AppSettings.TaggedWithModel).
+        // The model that produced each library's stored tags (AppSettings.TaggedWithModel and
+        // LazerTaggedWithModel).
         private string _taggedWithModel;
+        private string _lazerTaggedWithModel;
+
+        private string TaggedWithModel
+        {
+            get => _client == OsuClient.Lazer ? _lazerTaggedWithModel : _taggedWithModel;
+            set
+            {
+                if (_client == OsuClient.Lazer) _lazerTaggedWithModel = value;
+                else _taggedWithModel = value;
+            }
+        }
 
         // Above this are gimmick maps (Aspire and the like) that would otherwise fill the top of a
         // stars-descending list. They only show up when the user searches for one by name.
@@ -47,11 +66,11 @@ namespace OsuScoutNew
             InitializeComponent();
             var settings = SettingsService.Load();
             _taggedWithModel = settings.TaggedWithModel;
-
-            // A folder picked with ⚙ DIR wins; auto-detection is only the fallback.
-            _source = new StableSongsSource(System.IO.Directory.Exists(settings.SongsFolder)
-                ? settings.SongsFolder
-                : OsuLocationService.FindOsuSongsFolder());
+            _lazerTaggedWithModel = settings.LazerTaggedWithModel;
+            _songsFolder = settings.SongsFolder;
+            _lazerDataFolder = settings.LazerDataFolder;
+            _gameProcessNames = settings.GameProcessNames;
+            _client = settings.Client ?? PickClientOnFirstRun();
 
             _classifier = new OsuClassifier();
             _classifier.Initialize();
@@ -59,10 +78,57 @@ namespace OsuScoutNew
             _libraryService = new OsuLibraryService(_classifier);
             _liveTrackerService = new OsuLiveTrackerService(_libraryService);
             _liveTrackerService.MapProcessed += () => Dispatcher.Invoke(UpdateGrid);
-            _liveTrackerService.StartTracking(_source);
+
+            // --- MEMORY SERVICE WIRING ---
+            _memoryService = new OsuMemoryService();
+            _memoryService.GameStateChanged += HandleGameStateChange;
 
             this.Loaded += MainWindow_Loaded;
             this.Closed += MainWindow_Closed;
+
+            OpenLibrary();
+
+            TagSearchBox.ItemsSource = _classifier.Config.tags;
+            RestoreSettings(settings);
+            UpdateFilterLabels();
+            UpdateGrid();
+        }
+
+        // Only asked once: afterwards AppSettings.Client remembers the choice.
+        private static OsuClient PickClientOnFirstRun()
+        {
+            bool stable = OsuLocationService.FindOsuSongsFolder() != null;
+            bool lazer = LazerLocationService.FindDataFolder() != null;
+
+            var pick = GameClients.PickOnFirstRun(stable, lazer);
+            if (pick != null) return pick.Value;
+
+            var answer = MessageBox.Show(
+                "Scoutsu found both osu!stable and osu!lazer on this PC.\n\nShow your osu!lazer library? Choose No for osu!stable.\n\nYou can switch at any time with the STABLE / LAZER button at the top.",
+                "Which osu!?", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            return answer == MessageBoxResult.Yes ? OsuClient.Lazer : OsuClient.Stable;
+        }
+
+        private IBeatmapSource CreateSource(OsuClient client)
+        {
+            if (client == OsuClient.Lazer)
+                return new LazerFilesSource(LazerLocationService.FindDataFolder(_lazerDataFolder));
+
+            // A folder picked with ⚙ DIR wins; auto-detection is only the fallback.
+            var stable = new StableSongsSource(System.IO.Directory.Exists(_songsFolder)
+                ? _songsFolder
+                : OsuLocationService.FindOsuSongsFolder());
+            _songsFolder = stable.Root;
+            return stable;
+        }
+
+        // Shows _client's library: its own folder, watcher, database and scan. Each client
+        // has its own database file, so switching never mixes the two libraries.
+        private void OpenLibrary()
+        {
+            _liveTrackerService.StopTracking();
+            _source = CreateSource(_client);
+            _liveTrackerService.StartTracking(_source);
 
             // Scan on every launch, not just the first: the folder watcher only sees maps added
             // while the app is open. ScanLibraryAsync skips files already in the DB, so this only
@@ -82,15 +148,22 @@ namespace OsuScoutNew
                 || (_source.Root != null && anyMap.StartsWith(_source.Root, StringComparison.OrdinalIgnoreCase));
             if (libraryIsFromThisFolder) RunBackgroundScan();
 
-            TagSearchBox.ItemsSource = _classifier.Config.tags;
-            RestoreSettings(settings);
-            UpdateFilterLabels();
-            UpdateGrid();
+            // Auto-hide reads stable's memory. lazer has no equivalent yet; Alt+S still works.
+            if (_client == OsuClient.Stable && !_memoryPolling) _memoryService.StartPolling();
+            if (_client == OsuClient.Lazer && _memoryPolling) _memoryService.Dispose();
+            _memoryPolling = _client == OsuClient.Stable;
 
-            // --- MEMORY SERVICE WIRING ---
-            _memoryService = new OsuMemoryService();
-            _memoryService.GameStateChanged += HandleGameStateChange;
-            _memoryService.StartPolling();
+            ClientButton.Content = _client == OsuClient.Lazer ? "LAZER" : "STABLE";
+            FolderButton.ToolTip = _client == OsuClient.Lazer ? "Change osu!lazer data folder" : "Change Songs Folder";
+        }
+
+        private void ClientButton_Click(object sender, RoutedEventArgs e)
+        {
+            _client = _client == OsuClient.Lazer ? OsuClient.Stable : OsuClient.Lazer;
+            BeatmapGrid.ItemsSource = null;
+            OpenLibrary();
+            UpdateGrid();
+            SaveSettings();
         }
 
         private async void RunBackgroundScan()
@@ -98,6 +171,8 @@ namespace OsuScoutNew
             HotkeyPanel.Visibility = Visibility.Collapsed;
             ProgressPanel.Visibility = Visibility.Visible;
             PlayButton.IsEnabled = false;
+            // Switching mid-scan would leave this scan's progress on the other library's screen.
+            ClientButton.IsEnabled = false;
 
             var progress = new Progress<int>(percent =>
             {
@@ -109,13 +184,15 @@ namespace OsuScoutNew
             {
                 if (!System.IO.Directory.Exists(_source.Root))
                 {
-                    MessageBox.Show($"FATAL: Could not find osu! at {_source.Root}. Did you install it somewhere else?");
+                    MessageBox.Show(_client == OsuClient.Lazer
+                        ? "Could not find your osu!lazer data folder. Pick it with ⚙ DIR: it's the folder holding client.realm and a files folder."
+                        : $"FATAL: Could not find osu! at {_source.Root}. Did you install it somewhere else?");
                     return;
                 }
 
                 // A model update (new app version, new model files) makes every stored
                 // tag stale, and the scan below only tags new maps. Re-tag first.
-                if (_taggedWithModel != _classifier.ModelId)
+                if (TaggedWithModel != _classifier.ModelId)
                 {
                     var retagProgress = new Progress<int>(percent =>
                     {
@@ -123,7 +200,7 @@ namespace OsuScoutNew
                         ScanProgressText.Text = $"Updating tags for the new model... {percent}%";
                     });
                     await _libraryService.RetagLibraryAsync(_source.Kind, retagProgress);
-                    _taggedWithModel = _classifier.ModelId;
+                    TaggedWithModel = _classifier.ModelId;
                     SaveSettings();
                 }
 
@@ -133,11 +210,14 @@ namespace OsuScoutNew
             {
                 MessageBox.Show($"CRASH LOG:\n\n{ex.Message}\n\n{ex.StackTrace}");
             }
-
-            ProgressPanel.Visibility = Visibility.Collapsed;
-            HotkeyPanel.Visibility = Visibility.Visible;
-            PlayButton.IsEnabled = true;
-            UpdateGrid();
+            finally
+            {
+                ProgressPanel.Visibility = Visibility.Collapsed;
+                HotkeyPanel.Visibility = Visibility.Visible;
+                PlayButton.IsEnabled = true;
+                ClientButton.IsEnabled = true;
+                UpdateGrid();
+            }
         }
 
         private void HandleGameStateChange(OsuMemoryStatus status)
@@ -249,7 +329,10 @@ namespace OsuScoutNew
                                          .ToList();
 
             // Needs to be updated in OsuLibraryService to accept min and max for all properties
-            var results = await _libraryService.SearchBeatmapsAsync(_source.Kind, searchText, requiredTags, excludedTags, minStars, maxStars, minBpm, maxBpm, minLength, maxLength);
+            var client = _client;
+            var results = await _libraryService.SearchBeatmapsAsync(client, searchText, requiredTags, excludedTags, minStars, maxStars, minBpm, maxBpm, minLength, maxLength);
+            // The user switched client while this ran: these rows belong to the other library.
+            if (client != _client) return;
             BeatmapGrid.ItemsSource = results;
             ApplySort();
         }
@@ -288,7 +371,10 @@ namespace OsuScoutNew
         {
             SettingsService.Save(new AppSettings
             {
-                SongsFolder = _source.Root,
+                Client = _client,
+                SongsFolder = _songsFolder,
+                LazerDataFolder = _lazerDataFolder,
+                GameProcessNames = _gameProcessNames,
                 SearchText = SearchBox.Text,
                 TagText = TagSearchBox.Text,
                 MinStars = Finite(LowerBound(StarSlider)),
@@ -298,7 +384,8 @@ namespace OsuScoutNew
                 MinLength = Finite(LowerBound(LengthSlider)),
                 MaxLength = Finite(UpperBound(LengthSlider)),
                 Sort = _sort.Select(s => new SortSetting { Column = s.PropertyName, Descending = s.Direction == ListSortDirection.Descending }).ToList(),
-                TaggedWithModel = _taggedWithModel
+                TaggedWithModel = _taggedWithModel,
+                LazerTaggedWithModel = _lazerTaggedWithModel
             });
         }
 
@@ -332,14 +419,30 @@ namespace OsuScoutNew
         private void ChangeFolderButton_Click(object sender, RoutedEventArgs e)
         {
             var dialog = new Microsoft.Win32.OpenFolderDialog();
-            dialog.Title = "Select your new osu! Songs Folder";
+            dialog.Title = _client == OsuClient.Lazer
+                ? "Select your osu!lazer data folder (the one holding client.realm and files)"
+                : "Select your new osu! Songs Folder";
 
             if (dialog.ShowDialog() == true)
             {
                 string newPath = dialog.FolderName;
                 if (newPath.Equals(_source.Root, StringComparison.OrdinalIgnoreCase)) return;
 
-                _source = new StableSongsSource(newPath);
+                if (_client == OsuClient.Lazer)
+                {
+                    if (!LazerLocationService.IsDataFolder(newPath))
+                    {
+                        MessageBox.Show("That isn't an osu!lazer data folder. The right one holds client.realm and a folder called files.");
+                        return;
+                    }
+                    _lazerDataFolder = newPath;
+                    _source = new LazerFilesSource(newPath);
+                }
+                else
+                {
+                    _songsFolder = newPath;
+                    _source = new StableSongsSource(newPath);
+                }
                 _liveTrackerService.StartTracking(_source);
 
                 using (var db = new OsuDbContext(_source.Kind))
@@ -457,10 +560,10 @@ namespace OsuScoutNew
             {
                 try
                 {
-                    string searchQuery = $"{selectedMap.Artist} {selectedMap.Title} {selectedMap.Version}";
+                    string searchQuery = GameClients.SongSelectSearch(_client, selectedMap.BeatmapID, selectedMap.Artist, selectedMap.Title, selectedMap.Version);
                     Clipboard.SetText(searchQuery);
 
-                    bool focused = SystemInteropService.FocusOsuProcess();
+                    bool focused = SystemInteropService.FocusOsuProcess(_client, _gameProcessNames);
 
                     if (!focused)
                     {

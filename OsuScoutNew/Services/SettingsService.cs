@@ -1,15 +1,27 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Serialization;
+using OsuScoutNew.Core;
 
 namespace OsuScoutNew.Services
 {
     // What the user had the app set to, so it comes back the same after a restart.
     public class AppSettings
     {
+        // Which client's library is shown. null only on a first run, before it is picked
+        // (see SettingsService.Load: settings saved by older versions mean stable).
+        [JsonConverter(typeof(JsonStringEnumConverter))]
+        public OsuClient? Client { get; set; }
+
         // Only differs from auto-detection when the user picked a folder with ⚙ DIR.
         public string SongsFolder { get; set; }
+        public string LazerDataFolder { get; set; }
+
+        // Process names to look for when focusing the game. Both clients run as "osu!".
+        public List<string> GameProcessNames { get; set; } = GameClients.DefaultProcessNames.ToList();
 
         public string SearchText { get; set; } = "";
         public string TagText { get; set; } = "";
@@ -26,7 +38,9 @@ namespace OsuScoutNew.Services
         // OsuClassifier.ModelId of the model that produced the library's stored tags.
         // A different model on launch means those tags are stale (see RetagLibraryAsync).
         // null for libraries tagged before this was recorded, which are re-tagged once.
+        // Each client's library is tagged separately: TaggedWithModel is stable's.
         public string TaggedWithModel { get; set; }
+        public string LazerTaggedWithModel { get; set; }
 
         // First launch: hardest maps first.
         public List<SortSetting> Sort { get; set; } = new List<SortSetting>
@@ -51,7 +65,12 @@ namespace OsuScoutNew.Services
             try
             {
                 if (File.Exists(SettingsPath))
-                    return JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(SettingsPath)) ?? new AppSettings();
+                {
+                    var settings = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(SettingsPath)) ?? new AppSettings();
+                    // Saved before lazer support existed: the user was on stable all along.
+                    settings.Client ??= OsuClient.Stable;
+                    return settings;
+                }
             }
             catch
             {

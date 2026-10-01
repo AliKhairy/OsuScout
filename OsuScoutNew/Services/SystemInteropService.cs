@@ -1,7 +1,9 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Runtime.InteropServices;
+using OsuScoutNew.Core;
 
 namespace OsuScoutNew.Services
 {
@@ -29,11 +31,11 @@ namespace OsuScoutNew.Services
         private static extern int ShowWindow(IntPtr hWnd, int nCmdShow);
 
         // --- ENCAPSULATED LOGIC ---
-        public static bool FocusOsuProcess()
+        public static bool FocusOsuProcess(OsuClient client, IEnumerable<string> processNames)
         {
             try
             {
-                var osuProcess = Process.GetProcessesByName("osu!").FirstOrDefault();
+                var osuProcess = GameClients.FindRunningGame(client, processNames);
                 if (osuProcess != null)
                 {
                     IntPtr handle = osuProcess.MainWindowHandle;
