@@ -1,7 +1,7 @@
 # Feature parity harness
 
 The map feature vector is computed **twice** — once in Python during training
-(`neural_model.ImprovedBeatmapClassifier.extract_meaningful_features`) and once in
+(`osu_tagger/features/v1.py`, `extract_meaningful_features`) and once in
 C# at prediction time (`OsuScoutNew/FeatureExtractor.cs`). The trained model only
 works if those two implementations produce the **same numbers in the same order**.
 If they drift, predictions silently go wrong — no crash, no error.
@@ -13,7 +13,7 @@ both and comparing all features.
 
 | File | Repo | Role |
 | --- | --- | --- |
-| `parity_dump.py` | training (`osu-beatmap-classifier`) | dumps the Python feature vector as JSON |
+| `osu_tagger/parity/dump.py` | training (`osu-beatmap-classifier`) | dumps the Python feature vector as JSON (`python -m osu_tagger.parity.dump`) |
 | `parity/ParityDump/` | app (this repo) | console app that compiles the **real** `FeatureExtractor.cs` + `OsuParser.cs` and dumps the C# vector as JSON |
 | `parity/compare_parity.py` | app (this repo) | compares the two dumps, names any mismatch by feature |
 
@@ -27,7 +27,7 @@ Pick any `.osu` file (e.g. one from the training repo's `downloads/`), then:
 ```bash
 # 1. Python side (from the training repo, using its venv so tensorflow/sklearn resolve)
 cd /path/to/osu-beatmap-classifier
-venv/Scripts/python parity_dump.py downloads/downloaded_1000740.osu py.json
+venv/Scripts/python -m osu_tagger.parity.dump downloads/downloaded_1000740.osu py.json
 
 # 2. C# side (from this repo)
 cd /path/to/OsuScoutNew
@@ -66,11 +66,37 @@ goldens.** Otherwise CI keeps comparing C# against a stale snapshot and passes w
 two implementations have actually drifted. Regenerate from the training repo:
 
 ```bash
-python make_goldens.py /path/to/OsuScoutNew/parity/fixtures
+python -m osu_tagger.parity.goldens /path/to/OsuScoutNew/parity/fixtures
 ```
 
 Regenerating is a deliberate, reviewable step - the diff on those JSON files is exactly
 the change in feature behaviour, and it should be inspected, not rubber-stamped.
+
+## v2 features
+
+`FeatureExtractorV2.cs` is the C# port of the training repo's `osu_tagger/features/v2.py`
+(72 features). Which extractor the app runs is set by `feature_version` in
+`model_config.json`, so v1 model files keep working unchanged.
+
+```bash
+# Python side (training repo)
+venv/Scripts/python -m osu_tagger.parity.dump --feature-version 2 downloads/downloaded_1000740.osu py.json
+# C# side (this repo)
+dotnet run --project parity/ParityDump -- --feature-version 2 "C:/path/to/downloaded_1000740.osu" cs.json
+python parity/compare_parity.py py.json cs.json 1e-9 1e-9
+```
+
+v2 is computed in double precision on both sides, so it is held to 1e-9 rather
+than v1's 1e-2: measured over 4961 maps, the worst difference is 9e-13. CI checks
+`fixtures/{stream,jump,tech}.python.v2.json` the same way it checks v1. Regenerate
+them from the training repo with:
+
+```bash
+python -m osu_tagger.parity.goldens /path/to/OsuScoutNew/parity/fixtures --feature-version 2
+```
+
+`--dir <folder> <out.json>` (with `--feature-version 2`) dumps every `.osu` in a
+folder in one run, for checking parity over many maps at once.
 
 ## When to run
 

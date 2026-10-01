@@ -90,3 +90,18 @@ jobs:
               "parity/fixtures/$style.python.json" "/tmp/$style.cs.json"
             echo "::endgroup::"
           done
+
+      # The v2 extractor runs in double precision on both sides, so it is held to
+      # a far tighter tolerance than v1's float32 path: measured over 4961 maps the
+      # worst difference is 9e-13, so 1e-9 leaves room for platform maths while
+      # still catching any real logic drift.
+      - name: Compare C# v2 features against Python goldens
+        run: |
+          for style in stream jump tech; do
+            echo "::group::$style (v2)"
+            dotnet run --project parity/ParityDump -c Release --no-build -- \
+              --feature-version 2 "parity/fixtures/$style.osu" "/tmp/$style.v2.cs.json"
+            python3 parity/compare_parity.py \
+              "parity/fixtures/$style.python.v2.json" "/tmp/$style.v2.cs.json" 1e-9 1e-9
+            echo "::endgroup::"
+          done

@@ -8,7 +8,7 @@ namespace OsuScout
     {
         // --- TUNING CONSTANTS ---
         //
-        // Every one of these is duplicated in neural_model.py in the training repo,
+        // Every one of these is duplicated in osu_tagger/features/v1.py in the training repo,
         // under the SAME NAME. The model is trained on Python's numbers and runs on
         // these, so a value that differs between the two silently corrupts every
         // prediction - no crash, no error. Change one side, change the other, then
@@ -256,7 +256,7 @@ namespace OsuScout
             }
 
             // True linear pattern detection (collinearity over 4-object chunks).
-            // Ported to match Python neural_model.extract_meaningful_features exactly.
+            // Ported to match Python osu_tagger.features.v1 extract_meaningful_features exactly.
             // Computed in double to stay close to NumPy's float64 geometry.
             int trueLinearSequences = 0;
             if (numObjects >= 4)

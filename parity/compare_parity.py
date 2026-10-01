@@ -1,12 +1,13 @@
 """
 compare_parity.py -assert the Python and C# feature extractors agree.
 
-Loads two JSON dumps (one from the training repo's parity_dump.py, one from
+Loads two JSON dumps (one from the training repo's osu_tagger.parity.dump, one from
 parity/ParityDump) and compares them element-by-element within a tolerance that
 absorbs float64-vs-float32 rounding while still catching real logic drift.
 
 On mismatch it prints WHICH feature diverged (index, aggregate, per-section slot)
-so you know exactly where the two implementations disagree.
+so you know exactly where the two implementations disagree. v2 dumps carry their
+own feature_names, which are used for the labels instead.
 
 Usage:
     python compare_parity.py <python.json> <csharp.json> [atol] [rtol]
@@ -51,7 +52,11 @@ def label(idx: int, n_section: int) -> str:
 
 def load(path: str):
     with open(path, encoding="utf-8") as f:
-        return json.load(f)["features"]
+        return json.load(f)
+
+
+def load_features(path: str):
+    return load(path)["features"]
 
 
 def main():
@@ -60,15 +65,17 @@ def main():
               file=sys.stderr)
         raise SystemExit(2)
 
-    py = load(sys.argv[1])
-    cs = load(sys.argv[2])
+    py_dump = load(sys.argv[1])
+    py = py_dump["features"]
+    cs = load_features(sys.argv[2])
+    names = py_dump.get("feature_names")
     atol = float(sys.argv[3]) if len(sys.argv) > 3 else 1e-2
     rtol = float(sys.argv[4]) if len(sys.argv) > 4 else 1e-3
 
     if len(py) != len(cs):
         print(f"RESULT: FAIL -length mismatch: python={len(py)} csharp={len(cs)}")
         print("  (the two extractors produce different-size vectors -check FEATURE_COUNT "
-              "in neural_model.py vs featureCount in FeatureExtractor.cs)")
+              "in the training repo's osu_tagger/features vs FeatureExtractor.cs)")
         raise SystemExit(1)
 
     n = len(py)
@@ -85,12 +92,15 @@ def main():
             fails += 1
         rows.append((diff, i, py[i], cs[i], ok))
 
+    def name(i):
+        return names[i] if names else label(i, n_section)
+
     rows.sort(reverse=True)
-    print(f"features: {n}  (per-section={n_section})   atol={atol}  rtol={rtol}")
+    print(f"features: {n}  " + ("(v2)" if names else f"(per-section={n_section})") + f"   atol={atol}  rtol={rtol}")
     print(f"{'idx':>4}  {'feature':<28} {'python':>15} {'csharp':>15} {'abs_diff':>11}  status")
     print("-" * 86)
     for diff, i, x, y, ok in rows[:12]:
-        print(f"{i:>4}  {label(i, n_section):<28} {x:>15.6g} {y:>15.6g} {diff:>11.3g}  "
+        print(f"{i:>4}  {name(i):<28} {x:>15.6g} {y:>15.6g} {diff:>11.3g}  "
               f"{'ok' if ok else 'FAIL'}")
 
     if fails:
