@@ -68,8 +68,8 @@
                 <StackPanel Margin="12,12,6,12">
                     <TextBlock Text="Search" Style="{StaticResource SectionHeader}"/>
                     <TextBox x:Name="SearchBox" TextChanged="SearchInput_TextChanged"
-                             ToolTip="Matches artist, title or difficulty name"/>
-                    <TextBlock Text="Artist, title or difficulty" Style="{StaticResource Hint}" Margin="0,3,0,14"/>
+                             ToolTip="Matches artist, title, difficulty name or mapper"/>
+                    <TextBlock Text="Artist, title, difficulty or mapper" Style="{StaticResource Hint}" Margin="0,3,0,14"/>
 
                     <TextBlock Text="Tags" Style="{StaticResource SectionHeader}"/>
                     <ComboBox x:Name="TagSearchBox" IsEditable="True"
@@ -120,6 +120,7 @@
                     <DataGridTextColumn Header="Artist" Binding="{Binding Artist}" Width="*"/>
                     <DataGridTextColumn Header="Title" Binding="{Binding Title}" Width="1.4*"/>
                     <DataGridTextColumn Header="Difficulty" Binding="{Binding Version}" Width="*"/>
+                    <DataGridTextColumn Header="Mapper" Binding="{Binding Mapper}" Width="0.7*"/>
                     <DataGridTextColumn Header="★" Binding="{Binding StarRating, StringFormat={}{0:F2}}" Width="52">
                         <DataGridTextColumn.ElementStyle>
                             <Style TargetType="TextBlock" BasedOn="{StaticResource NumberCell}">
@@ -130,6 +131,10 @@
                     <DataGridTextColumn Header="BPM" Binding="{Binding BPM}" Width="48" ElementStyle="{StaticResource NumberCell}"/>
                     <DataGridTextColumn Header="Length" Binding="{Binding LengthSeconds, Converter={StaticResource Clock}}"
                                         SortMemberPath="LengthSeconds" Width="56" ElementStyle="{StaticResource NumberCell}"/>
+                    <DataGridTextColumn Header="CS" Binding="{Binding CS, StringFormat={}{0:0.#}}" Width="38" ElementStyle="{StaticResource NumberCell}"/>
+                    <DataGridTextColumn Header="AR" Binding="{Binding AR, StringFormat={}{0:0.#}}" Width="38" ElementStyle="{StaticResource NumberCell}"/>
+                    <DataGridTextColumn Header="OD" Binding="{Binding OD, StringFormat={}{0:0.#}}" Width="38" ElementStyle="{StaticResource NumberCell}"/>
+                    <DataGridTextColumn Header="HP" Binding="{Binding HP, StringFormat={}{0:0.#}}" Width="38" ElementStyle="{StaticResource NumberCell}"/>
                     <DataGridTemplateColumn Header="Tags" Width="1.6*" SortMemberPath="Tags">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>

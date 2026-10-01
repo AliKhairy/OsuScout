@@ -49,6 +49,7 @@ namespace OsuScoutNew.Services
                     string needle = searchText.ToLowerInvariant();
                     query = query.Where(m => m.Title.ToLower().Contains(needle)
                                           || m.Artist.ToLower().Contains(needle)
+                                          || m.Mapper.ToLower().Contains(needle)
                                           || m.Version.ToLower().Contains(needle));
                 }
 
@@ -121,7 +122,7 @@ namespace OsuScoutNew.Services
 
                         var stats = ExtractBpmAndLength(filePath);
 
-                        batchRecords.Add(new BeatmapRecord
+                        batchRecords.Add(WithDetails(parser, new BeatmapRecord
                         {
                             FilePath = filePath,
                             Title = parser.Metadata.GetValueOrDefault("Title", "Unknown"),
@@ -132,7 +133,7 @@ namespace OsuScoutNew.Services
                             LengthSeconds = stats.length,
                             Tags = string.Join(",", predictedTags),
                             StarRating = calculatedStars
-                        });
+                        }));
                     }
                     catch { }
 
@@ -243,6 +244,74 @@ namespace OsuScoutNew.Services
             });
         }
 
+        // The map's mapper and difficulty settings (CS, AR, OD, HP), straight from the file.
+        private static BeatmapRecord WithDetails(OsuParser parser, BeatmapRecord record)
+        {
+            var difficulty = parser.GetDifficulty();
+            record.Mapper = parser.Metadata.GetValueOrDefault("Creator", "");
+            record.CS = difficulty.GetValueOrDefault("CircleSize");
+            record.AR = difficulty.GetValueOrDefault("ApproachRate");
+            record.OD = difficulty.GetValueOrDefault("OverallDifficulty");
+            record.HP = difficulty.GetValueOrDefault("HPDrainRate");
+            return record;
+        }
+
+        // --- FILLING IN NEWER COLUMNS ---
+        // Maps stored before the mapper and CS/AR/OD/HP were recorded have them empty. This
+        // reads them from each map's file once; maps whose file is gone or unreadable stay
+        // empty (and are retried next launch).
+        public async Task FillMissingDetailsAsync(OsuClient client, IProgress<int> progress = null)
+        {
+            await Task.Run(() =>
+            {
+                List<(int id, string path)> rows;
+                using (var db = new OsuDbContext(client))
+                {
+                    rows = db.Beatmaps.Where(b => b.CS == null).Select(b => new { b.Id, b.FilePath }).AsEnumerable()
+                                      .Select(b => (b.Id, b.FilePath)).ToList();
+                }
+                if (rows.Count == 0) return;
+
+                var details = new ConcurrentDictionary<int, BeatmapRecord>();
+                int done = 0, lastReported = -1;
+
+                Parallel.ForEach(rows, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount }, row =>
+                {
+                    try
+                    {
+                        if (!File.Exists(row.path)) return;
+                        var parser = new OsuParser(row.path);
+                        parser.ReadFile();
+                        details[row.id] = WithDetails(parser, new BeatmapRecord());
+                    }
+                    catch { }
+                    finally
+                    {
+                        int percent = (int)((Interlocked.Increment(ref done) / (double)rows.Count) * 100);
+                        if (percent > lastReported && progress != null)
+                        {
+                            progress.Report(percent);
+                            lastReported = percent;
+                        }
+                    }
+                });
+
+                using (var db = new OsuDbContext(client))
+                {
+                    foreach (var record in db.Beatmaps.Where(b => b.CS == null))
+                    {
+                        if (!details.TryGetValue(record.Id, out var found)) continue;
+                        record.Mapper = found.Mapper;
+                        record.CS = found.CS;
+                        record.AR = found.AR;
+                        record.OD = found.OD;
+                        record.HP = found.HP;
+                    }
+                    db.SaveChanges();
+                }
+            });
+        }
+
         // --- FILE PARSING UTILITY ---
         public (double bpm, int length) ExtractBpmAndLength(string filePath)
         {
@@ -326,7 +395,7 @@ namespace OsuScoutNew.Services
                 {
                     if (db.Beatmaps.Any(b => b.FilePath == filePath)) return;
 
-                    db.Beatmaps.Add(new BeatmapRecord
+                    db.Beatmaps.Add(WithDetails(parser, new BeatmapRecord
                     {
                         FilePath = filePath,
                         Title = parser.Metadata.GetValueOrDefault("Title", "Unknown"),
@@ -337,7 +406,7 @@ namespace OsuScoutNew.Services
                         LengthSeconds = stats.length,
                         Tags = string.Join(",", predictedTags),
                         StarRating = calculatedStars
-                    });
+                    }));
                     db.SaveChanges();
                 }
             }

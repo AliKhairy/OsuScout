@@ -132,7 +132,7 @@ namespace OsuScoutNew
             string anyMap;
             using (var db = new OsuDbContext(_source.Kind))
             {
-                db.Database.EnsureCreated();
+                db.EnsureSchema();
                 anyMap = db.Beatmaps.Select(b => b.FilePath).FirstOrDefault();
             }
             bool libraryIsFromThisFolder = anyMap == null
@@ -195,6 +195,14 @@ namespace OsuScoutNew
                     TaggedWithModel = _classifier.ModelId;
                     SaveSettings();
                 }
+
+                // Libraries stored before the mapper and CS/AR/OD/HP were recorded: fill those in once.
+                var detailsProgress = new Progress<int>(percent =>
+                {
+                    ScanProgressBar.Value = percent;
+                    ScanProgressText.Text = $"Reading mapper and CS/AR/OD/HP... {percent}%";
+                });
+                await _libraryService.FillMissingDetailsAsync(_source.Kind, detailsProgress);
 
                 await _libraryService.ScanLibraryAsync(_source, progress);
             }
