@@ -16,13 +16,16 @@ namespace OsuScoutNew.Services
         [JsonConverter(typeof(JsonStringEnumConverter))]
         public OsuClient? Client { get; set; }
 
-        // Only differs from auto-detection when the user picked a folder with ⚙ DIR.
+        // Only differs from auto-detection when the user picked a folder with Folder….
         public string SongsFolder { get; set; }
         public string LazerDataFolder { get; set; }
 
         // Keep the window above the game. Off, it behaves like a normal window, which suits a
         // second monitor and avoids two cursors over a game that draws its own.
         public bool AlwaysOnTop { get; set; } = true;
+
+        // Where the window was and how big, so it reopens the same way. null = first launch.
+        public WindowPlacement Window { get; set; }
 
         // Process names to look for when focusing the game. Both clients run as "osu!".
         public List<string> GameProcessNames { get; set; } = GameClients.DefaultProcessNames.ToList();
@@ -51,6 +54,15 @@ namespace OsuScoutNew.Services
         {
             new SortSetting { Column = "StarRating", Descending = true }
         };
+    }
+
+    public class WindowPlacement
+    {
+        public double Left { get; set; }
+        public double Top { get; set; }
+        public double Width { get; set; }
+        public double Height { get; set; }
+        public bool Maximized { get; set; }
     }
 
     public class SortSetting

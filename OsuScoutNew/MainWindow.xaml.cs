@@ -34,6 +34,8 @@ namespace OsuScoutNew
         private string _lazerDataFolder;
         private List<string> _gameProcessNames;
         private bool _memoryPolling;
+        // Set while OpenLibrary makes the client picker match _client, so that isn't a switch.
+        private bool _showingClient;
 
         private OsuMemoryService _memoryService;
         private OsuLibraryService _libraryService;
@@ -106,7 +108,7 @@ namespace OsuScoutNew
             if (pick != null) return pick.Value;
 
             var answer = MessageBox.Show(
-                "Scoutsu found both osu!stable and osu!lazer on this PC.\n\nShow your osu!lazer library? Choose No for osu!stable.\n\nYou can switch at any time with the STABLE / LAZER button at the top.",
+                "Scoutsu found both osu!stable and osu!lazer on this PC.\n\nShow your osu!lazer library? Choose No for osu!stable.\n\nYou can switch at any time with the Library picker at the top.",
                 "Which osu!?", MessageBoxButton.YesNo, MessageBoxImage.Question);
             return answer == MessageBoxResult.Yes ? OsuClient.Lazer : OsuClient.Stable;
         }
@@ -116,7 +118,7 @@ namespace OsuScoutNew
             if (client == OsuClient.Lazer)
                 return new LazerFilesSource(LazerLocationService.FindDataFolder(_lazerDataFolder));
 
-            // A folder picked with ⚙ DIR wins; auto-detection is only the fallback.
+            // A folder picked with Folder… wins; auto-detection is only the fallback.
             var stable = new StableSongsSource(System.IO.Directory.Exists(_songsFolder)
                 ? _songsFolder
                 : OsuLocationService.FindOsuSongsFolder());
@@ -136,7 +138,7 @@ namespace OsuScoutNew
             // while the app is open. ScanLibraryAsync skips files already in the DB, so this only
             // processes maps that are new since last time.
             // The exception is a library that came from a different folder. Older versions didn't
-            // save a folder picked with ⚙ DIR, so auto-detection can land somewhere else, and
+            // save a folder picked with Folder… (once ⚙ DIR), so auto-detection can land somewhere else, and
             // scanning that would mix two libraries (or report osu! missing on every launch).
             // The library always comes from one folder (changing folder wipes it), so one map is
             // enough to tell.
@@ -155,28 +157,35 @@ namespace OsuScoutNew
             if (_client == OsuClient.Lazer && _memoryPolling) _memoryService.Dispose();
             _memoryPolling = _client == OsuClient.Stable;
 
-            ClientButton.Content = _client == OsuClient.Lazer ? "LAZER" : "STABLE";
-            FolderButton.ToolTip = _client == OsuClient.Lazer ? "Change osu!lazer data folder" : "Change Songs Folder";
+            _showingClient = true;
+            ClientCombo.SelectedIndex = _client == OsuClient.Lazer ? 1 : 0;
+            _showingClient = false;
+            FolderButton.ToolTip = _client == OsuClient.Lazer ? "Pick your osu!lazer data folder" : "Pick your osu! Songs folder";
         }
 
-        private void PinButton_Click(object sender, RoutedEventArgs e)
+        private void AlwaysOnTop_Click(object sender, RoutedEventArgs e)
         {
-            SetAlwaysOnTop(!Topmost);
+            SetAlwaysOnTop(AlwaysOnTopCheck.IsChecked == true);
             SaveSettings();
         }
 
         private void SetAlwaysOnTop(bool onTop)
         {
             Topmost = onTop;
-            PinButton.Opacity = onTop ? 1 : 0.35;
-            PinButton.ToolTip = onTop
-                ? "Always on top: on. Click to let other windows cover Scoutsu"
-                : "Always on top: off. Click to keep Scoutsu above the game";
+            AlwaysOnTopCheck.IsChecked = onTop;
+            AlwaysOnTopCheck.ToolTip = onTop
+                ? "Scoutsu stays above other windows, including the game"
+                : "Scoutsu behaves like a normal window: handy on a second monitor";
         }
 
-        private void ClientButton_Click(object sender, RoutedEventArgs e)
+        private void ClientCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            _client = _client == OsuClient.Lazer ? OsuClient.Stable : OsuClient.Lazer;
+            // OpenLibrary sets the selection to match _client; only a user's pick switches.
+            if (_showingClient || _libraryService == null) return;
+            var picked = ClientCombo.SelectedIndex == 1 ? OsuClient.Lazer : OsuClient.Stable;
+            if (picked == _client) return;
+
+            _client = picked;
             BeatmapGrid.ItemsSource = null;
             OpenLibrary();
             UpdateGrid();
@@ -189,7 +198,7 @@ namespace OsuScoutNew
             ProgressPanel.Visibility = Visibility.Visible;
             PlayButton.IsEnabled = false;
             // Switching mid-scan would leave this scan's progress on the other library's screen.
-            ClientButton.IsEnabled = false;
+            ClientCombo.IsEnabled = false;
 
             var progress = new Progress<int>(percent =>
             {
@@ -202,7 +211,7 @@ namespace OsuScoutNew
                 if (!System.IO.Directory.Exists(_source.Root))
                 {
                     MessageBox.Show(_client == OsuClient.Lazer
-                        ? "Could not find your osu!lazer data folder. Pick it with ⚙ DIR: it's the folder holding client.realm and a files folder."
+                        ? "Could not find your osu!lazer data folder. Pick it with Folder…: it's the folder holding client.realm and a files folder."
                         : $"FATAL: Could not find osu! at {_source.Root}. Did you install it somewhere else?");
                     return;
                 }
@@ -232,7 +241,7 @@ namespace OsuScoutNew
                 ProgressPanel.Visibility = Visibility.Collapsed;
                 HotkeyPanel.Visibility = Visibility.Visible;
                 PlayButton.IsEnabled = true;
-                ClientButton.IsEnabled = true;
+                ClientCombo.IsEnabled = true;
                 UpdateGrid();
             }
         }
@@ -256,21 +265,34 @@ namespace OsuScoutNew
         }
 
         // --- UI UTILITY HANDLERS ---
-        private void Window_MouseDown(object sender, MouseButtonEventArgs e)
+
+        // A dark title bar to match the window (Windows 10 2004 and later; older builds
+        // used attribute 19 for the same thing, and anything older keeps a light one).
+        protected override void OnSourceInitialized(EventArgs e)
         {
-            if (e.ChangedButton == MouseButton.Left)
-                this.DragMove();
+            base.OnSourceInitialized(e);
+            IntPtr hwnd = new WindowInteropHelper(this).Handle;
+            int on = 1;
+            if (DwmSetWindowAttribute(hwnd, 20, ref on, sizeof(int)) != 0)
+                DwmSetWindowAttribute(hwnd, 19, ref on, sizeof(int));
         }
 
-        private void MinimizeButton_Click(object sender, RoutedEventArgs e)
+        [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
+        private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
+
+        // Minimising by hand means "leave me hidden": stable's auto-show at song select respects it.
+        protected override void OnStateChanged(EventArgs e)
         {
-            _userManuallyHidden = true;
-            this.WindowState = WindowState.Minimized;
+            base.OnStateChanged(e);
+            if (WindowState == WindowState.Minimized) _userManuallyHidden = true;
         }
 
-        private void CloseButton_Click(object sender, RoutedEventArgs e)
+        private void BeatmapGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            this.Close();
+            SelectionText.Text = BeatmapGrid.SelectedItem is BeatmapRecord map
+                ? $"{map.Artist} - {map.Title} [{map.Version}]"
+                : "Select a map, or double-click it, to find it in osu!'s song select.";
+            SelectionText.Foreground = (Brush)FindResource(BeatmapGrid.SelectedItem is BeatmapRecord ? "Brush.Text" : "Brush.TextMuted");
         }
 
         private void SearchInput_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e) => UpdateGrid();
@@ -299,23 +321,24 @@ namespace OsuScoutNew
 
             ShowRange(StarSlider, StarValueText, StarResetButton, v => $"{v:0.#}★", "");
             ShowRange(BpmSlider, BpmValueText, BpmResetButton, v => $"{v:0}", "");
-            ShowRange(LengthSlider, LengthValueText, LengthResetButton, v => $"{v:0}", " MIN");
+            ShowRange(LengthSlider, LengthValueText, LengthResetButton, v => $"{v:0}", " min");
         }
 
         // Describes a range the way UpperBound/LowerBound filter it: a handle at the end of the
-        // track is "no limit", so both open reads "ANY" and one open end reads "UP TO x" or "x+".
+        // track is "no limit", so both open reads "Any" and one open end reads "Up to x" or "x+".
         private void ShowRange(RangeSlider slider, TextBlock label, Button reset, Func<double, string> format, string unit)
         {
             bool openLow = slider.LowerValue <= slider.Minimum;
             bool openHigh = slider.UpperValue >= slider.Maximum;
             bool active = !(openLow && openHigh);
 
-            if (!active) label.Text = "ANY";
-            else if (openLow) label.Text = $"UP TO {format(slider.UpperValue)}{unit}";
+            if (!active) label.Text = "Any";
+            else if (openLow) label.Text = $"Up to {format(slider.UpperValue)}{unit}";
             else if (openHigh) label.Text = $"{format(slider.LowerValue)}+{unit}";
             else label.Text = $"{format(slider.LowerValue)} – {format(slider.UpperValue)}{unit}";
 
             label.Foreground = (Brush)FindResource(active ? "AccentBrush" : "TextMutedBrush");
+            slider.Foreground = (Brush)FindResource(active ? "Brush.AccentStrong" : "Brush.BorderStrong");
             reset.Visibility = active ? Visibility.Visible : Visibility.Hidden;
         }
 
@@ -352,6 +375,10 @@ namespace OsuScoutNew
             if (client != _client) return;
             BeatmapGrid.ItemsSource = results;
             ApplySort();
+
+            string name = client == OsuClient.Lazer ? "osu!lazer" : "osu!stable";
+            string where = System.IO.Directory.Exists(_source?.Root) ? _source.Root : "folder not found";
+            LibraryStatusText.Text = $"{name}  ·  {where}  ·  {results.Count:N0} maps shown";
         }
 
         private void ApplySort()
@@ -374,6 +401,7 @@ namespace OsuScoutNew
         {
             _restoringSettings = true;
             SetAlwaysOnTop(settings.AlwaysOnTop);
+            RestorePlacement(settings.Window);
             SearchBox.Text = settings.SearchText ?? "";
             TagSearchBox.Text = settings.TagText ?? "";
             SetRange(StarSlider, settings.MinStars, settings.MaxStars);
@@ -404,8 +432,43 @@ namespace OsuScoutNew
                 Sort = _sort.Select(s => new SortSetting { Column = s.PropertyName, Descending = s.Direction == ListSortDirection.Descending }).ToList(),
                 TaggedWithModel = _taggedWithModel,
                 LazerTaggedWithModel = _lazerTaggedWithModel,
-                AlwaysOnTop = Topmost
+                AlwaysOnTop = Topmost,
+                Window = CurrentPlacement()
             });
+        }
+
+        private void RestorePlacement(WindowPlacement placement)
+        {
+            if (placement == null || placement.Width < MinWidth || placement.Height < MinHeight) return;
+
+            // Skip a position that is no longer on any screen (e.g. a monitor was unplugged).
+            var bounds = new Rect(placement.Left, placement.Top, placement.Width, placement.Height);
+            var desktop = new Rect(SystemParameters.VirtualScreenLeft, SystemParameters.VirtualScreenTop,
+                                   SystemParameters.VirtualScreenWidth, SystemParameters.VirtualScreenHeight);
+            if (!desktop.IntersectsWith(bounds)) return;
+
+            WindowStartupLocation = WindowStartupLocation.Manual;
+            Left = placement.Left;
+            Top = placement.Top;
+            Width = placement.Width;
+            Height = placement.Height;
+            if (placement.Maximized) WindowState = WindowState.Maximized;
+        }
+
+        // The normal-state bounds, even while maximised or minimised, so un-maximising later
+        // returns to the size the user chose.
+        private WindowPlacement CurrentPlacement()
+        {
+            Rect bounds = WindowState == WindowState.Normal ? new Rect(Left, Top, Width, Height) : RestoreBounds;
+            if (bounds.IsEmpty || double.IsNaN(bounds.Width)) return null;
+            return new WindowPlacement
+            {
+                Left = bounds.Left,
+                Top = bounds.Top,
+                Width = bounds.Width,
+                Height = bounds.Height,
+                Maximized = WindowState == WindowState.Maximized
+            };
         }
 
         // null (open end) puts the handle at the end of the track, i.e. back to "no limit".

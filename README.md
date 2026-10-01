@@ -12,12 +12,12 @@ Scoutsu (formerly OsuScout) is a WPF-based tool designed for osu! players to ana
 - Works with both osu!stable and osu!lazer
 
 ## osu!stable and osu!lazer
-Scoutsu finds, tags and searches the maps of either client. On first launch it picks whichever one is installed, or asks if you have both. The **STABLE / LAZER** button at the top switches between them, and each client keeps its own library, so switching never mixes them.
+Scoutsu finds, tags and searches the maps of either client. On first launch it picks whichever one is installed, or asks if you have both. The **Library** picker at the top switches between them, and each client keeps its own library, so switching never mixes them.
 
-- **Finding your maps.** For stable, Scoutsu reads your `Songs` folder. For lazer, it reads lazer's data folder (`%APPDATA%\osu`, or wherever you moved it in lazer's settings). Scoutsu only ever reads from it and never changes your lazer install. If either isn't found, pick it with **⚙ DIR**.
+- **Finding your maps.** For stable, Scoutsu reads your `Songs` folder. For lazer, it reads lazer's data folder (`%APPDATA%\osu`, or wherever you moved it in lazer's settings). Scoutsu only ever reads from it and never changes your lazer install. If either isn't found, pick it with **Folder…**.
 - **New maps** show up while Scoutsu is open, on both clients.
 - **Copy Search to Clipboard** copies the beatmap ID on lazer, which song select matches to that exact map. On stable, and for maps with no online ID, it copies artist, title and difficulty.
-- **Auto-hide while playing** is stable-only for now: it reads stable's memory, which doesn't work for lazer. On lazer, use **Alt + S** to show or hide the window.
+- **Auto-hide while playing** is stable-only for now: it reads stable's memory, which doesn't work for lazer. On lazer, use **Alt + S** to show or hide the window. Untick **Always on top** to use Scoutsu as a normal window, e.g. on a second monitor.
 
 ## Installation
 1. Go to the [Releases](https://github.com/AliKhairy/OsuScout/releases) page.
