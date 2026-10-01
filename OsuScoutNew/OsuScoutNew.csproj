@@ -10,7 +10,7 @@
     <!-- THE release number. Bump it in a PR and merging that PR ships it to users
          (see .github/workflows/release.yml). MAJOR.MINOR.PATCH: breaking change /
          new feature / bug fix only. -->
-    <Version>1.1.0</Version>
+    <Version>1.2.0</Version>
   </PropertyGroup>
 
   <ItemGroup>
