@@ -20,10 +20,6 @@ namespace OsuScoutNew.Services
         public string SongsFolder { get; set; }
         public string LazerDataFolder { get; set; }
 
-        // Keep the window above the game. Off, it behaves like a normal window, which suits a
-        // second monitor and avoids two cursors over a game that draws its own.
-        public bool AlwaysOnTop { get; set; } = true;
-
         // Where the window was and how big, so it reopens the same way. null = first launch.
         public WindowPlacement Window { get; set; }
 

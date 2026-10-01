@@ -5,7 +5,6 @@
         xmlns:local="clr-namespace:OsuScoutNew"
         Title="Scoutsu" Width="1100" Height="680" MinWidth="780" MinHeight="460"
         Style="{StaticResource WindowStyle}"
-        Topmost="True"
         WindowStartupLocation="CenterScreen">
 
     <Window.Resources>
@@ -20,8 +19,6 @@
         <Border DockPanel.Dock="Top" Background="{StaticResource Brush.Window}" BorderBrush="{StaticResource Brush.Separator}"
                 BorderThickness="0,0,0,1" Padding="10,7">
             <DockPanel>
-                <Button DockPanel.Dock="Right" Style="{StaticResource LinkButton}" Content="♥ Support the developer"
-                        Click="DonateButton_Click" ToolTip="Opens the original author's donation page"/>
                 <StackPanel Orientation="Horizontal">
                     <TextBlock Text="Library:" VerticalAlignment="Center" Margin="0,0,6,0" Foreground="{StaticResource Brush.TextDim}"/>
                     <ComboBox x:Name="ClientCombo" Width="110" SelectionChanged="ClientCombo_SelectionChanged"
@@ -30,8 +27,6 @@
                         <ComboBoxItem Content="osu!lazer"/>
                     </ComboBox>
                     <Button x:Name="FolderButton" Content="Folder…" Margin="6,0,0,0" Click="ChangeFolderButton_Click"/>
-                    <Rectangle Width="1" Fill="{StaticResource Brush.Separator}" Margin="12,2"/>
-                    <CheckBox x:Name="AlwaysOnTopCheck" Content="Always on top" VerticalAlignment="Center" Click="AlwaysOnTop_Click"/>
                 </StackPanel>
             </DockPanel>
         </Border>
@@ -40,8 +35,6 @@
         <Border DockPanel.Dock="Bottom" Background="{StaticResource Brush.Window}" BorderBrush="{StaticResource Brush.Separator}"
                 BorderThickness="0,1,0,0" Padding="10,4">
             <DockPanel>
-                <TextBlock x:Name="HotkeyPanel" DockPanel.Dock="Right" Foreground="{StaticResource Brush.TextMuted}"
-                           Text="Alt+S shows or hides Scoutsu" VerticalAlignment="Center"/>
                 <StackPanel x:Name="ProgressPanel" DockPanel.Dock="Right" Orientation="Horizontal" Visibility="Collapsed" Margin="0,0,16,0">
                     <ProgressBar x:Name="ScanProgressBar" Width="160" Minimum="0" Maximum="100" VerticalAlignment="Center"/>
                     <TextBlock x:Name="ScanProgressText" Margin="8,0,0,0" VerticalAlignment="Center"/>

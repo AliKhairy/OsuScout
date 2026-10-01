@@ -1,5 +1,3 @@
-using OsuMemoryDataProvider;
-using OsuMemoryDataProvider.OsuMemoryModels;
 using OsuScout;
 using OsuScoutNew.Core;
 using OsuScoutNew.Services;
@@ -21,10 +19,6 @@ namespace OsuScoutNew
 {
     public partial class MainWindow : Window
     {
-        private bool _userManuallyHidden = false;
-        // The window that had focus when Alt+S showed this one (usually the game).
-        private IntPtr _returnFocusTo;
-        private HwndSource _hwndSource;
         private OsuClassifier _classifier;
         private IBeatmapSource _source;
 
@@ -33,11 +27,9 @@ namespace OsuScoutNew
         private string _songsFolder;
         private string _lazerDataFolder;
         private List<string> _gameProcessNames;
-        private bool _memoryPolling;
         // Set while OpenLibrary makes the client picker match _client, so that isn't a switch.
         private bool _showingClient;
 
-        private OsuMemoryService _memoryService;
         private OsuLibraryService _libraryService;
         private OsuLiveTrackerService _liveTrackerService;
 
@@ -83,12 +75,7 @@ namespace OsuScoutNew
             _liveTrackerService = new OsuLiveTrackerService(_libraryService);
             _liveTrackerService.MapProcessed += () => Dispatcher.Invoke(UpdateGrid);
 
-            // --- MEMORY SERVICE WIRING ---
-            _memoryService = new OsuMemoryService();
-            _memoryService.GameStateChanged += HandleGameStateChange;
-
             this.Loaded += MainWindow_Loaded;
-            this.Closed += MainWindow_Closed;
 
             OpenLibrary();
 
@@ -152,30 +139,10 @@ namespace OsuScoutNew
                 || (_source.Root != null && anyMap.StartsWith(_source.Root, StringComparison.OrdinalIgnoreCase));
             if (libraryIsFromThisFolder) RunBackgroundScan();
 
-            // Auto-hide reads stable's memory. lazer has no equivalent yet; Alt+S still works.
-            if (_client == OsuClient.Stable && !_memoryPolling) _memoryService.StartPolling();
-            if (_client == OsuClient.Lazer && _memoryPolling) _memoryService.Dispose();
-            _memoryPolling = _client == OsuClient.Stable;
-
             _showingClient = true;
             ClientCombo.SelectedIndex = _client == OsuClient.Lazer ? 1 : 0;
             _showingClient = false;
             FolderButton.ToolTip = _client == OsuClient.Lazer ? "Pick your osu!lazer data folder" : "Pick your osu! Songs folder";
-        }
-
-        private void AlwaysOnTop_Click(object sender, RoutedEventArgs e)
-        {
-            SetAlwaysOnTop(AlwaysOnTopCheck.IsChecked == true);
-            SaveSettings();
-        }
-
-        private void SetAlwaysOnTop(bool onTop)
-        {
-            Topmost = onTop;
-            AlwaysOnTopCheck.IsChecked = onTop;
-            AlwaysOnTopCheck.ToolTip = onTop
-                ? "Scoutsu stays above other windows, including the game"
-                : "Scoutsu behaves like a normal window: handy on a second monitor";
         }
 
         private void ClientCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -194,7 +161,6 @@ namespace OsuScoutNew
 
         private async void RunBackgroundScan()
         {
-            HotkeyPanel.Visibility = Visibility.Collapsed;
             ProgressPanel.Visibility = Visibility.Visible;
             PlayButton.IsEnabled = false;
             // Switching mid-scan would leave this scan's progress on the other library's screen.
@@ -239,29 +205,10 @@ namespace OsuScoutNew
             finally
             {
                 ProgressPanel.Visibility = Visibility.Collapsed;
-                HotkeyPanel.Visibility = Visibility.Visible;
                 PlayButton.IsEnabled = true;
                 ClientCombo.IsEnabled = true;
                 UpdateGrid();
             }
-        }
-
-        private void HandleGameStateChange(OsuMemoryStatus status)
-        {
-            Dispatcher.Invoke(() =>
-            {
-                if (status == OsuMemoryStatus.Playing)
-                {
-                    this.Visibility = Visibility.Collapsed;
-                }
-                else if (status == OsuMemoryStatus.SongSelect || status == OsuMemoryStatus.MainMenu)
-                {
-                    if (!_userManuallyHidden)
-                    {
-                        this.Visibility = Visibility.Visible;
-                    }
-                }
-            });
         }
 
         // --- UI UTILITY HANDLERS ---
@@ -279,13 +226,6 @@ namespace OsuScoutNew
 
         [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
         private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
-
-        // Minimising by hand means "leave me hidden": stable's auto-show at song select respects it.
-        protected override void OnStateChanged(EventArgs e)
-        {
-            base.OnStateChanged(e);
-            if (WindowState == WindowState.Minimized) _userManuallyHidden = true;
-        }
 
         private void BeatmapGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
@@ -400,7 +340,6 @@ namespace OsuScoutNew
         private void RestoreSettings(AppSettings settings)
         {
             _restoringSettings = true;
-            SetAlwaysOnTop(settings.AlwaysOnTop);
             RestorePlacement(settings.Window);
             SearchBox.Text = settings.SearchText ?? "";
             TagSearchBox.Text = settings.TagText ?? "";
@@ -432,7 +371,6 @@ namespace OsuScoutNew
                 Sort = _sort.Select(s => new SortSetting { Column = s.PropertyName, Descending = s.Direction == ListSortDirection.Descending }).ToList(),
                 TaggedWithModel = _taggedWithModel,
                 LazerTaggedWithModel = _lazerTaggedWithModel,
-                AlwaysOnTop = Topmost,
                 Window = CurrentPlacement()
             });
         }
@@ -489,15 +427,6 @@ namespace OsuScoutNew
 
         private void BeatmapGrid_MouseDoubleClick(object sender, MouseButtonEventArgs e) => LaunchSelectedMap();
 
-        private void DonateButton_Click(object sender, RoutedEventArgs e)
-        {
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = "https://paypal.me/metacis67",
-                UseShellExecute = true
-            });
-        }
-
         private void ChangeFolderButton_Click(object sender, RoutedEventArgs e)
         {
             var dialog = new Microsoft.Win32.OpenFolderDialog();
@@ -540,15 +469,6 @@ namespace OsuScoutNew
 
         private void MainWindow_Loaded(object sender, RoutedEventArgs e)
         {
-            var helper = new WindowInteropHelper(this);
-            _hwndSource = HwndSource.FromHwnd(helper.Handle);
-
-            if (_hwndSource != null)
-            {
-                _hwndSource.AddHook(HwndHook);
-                SystemInteropService.RegisterHotKey(helper.Handle, SystemInteropService.HOTKEY_ID, SystemInteropService.MOD_ALT, SystemInteropService.VK_S);
-            }
-
             _ = UpdateAppAsync();
         }
 
@@ -614,28 +534,6 @@ namespace OsuScoutNew
             ApplySort();
         }
 
-        private void MainWindow_Closed(object sender, EventArgs e)
-        {
-            var helper = new WindowInteropHelper(this);
-            SystemInteropService.UnregisterHotKey(helper.Handle, SystemInteropService.HOTKEY_ID);
-
-            if (_hwndSource != null)
-            {
-                _hwndSource.RemoveHook(HwndHook);
-                _hwndSource.Dispose();
-            }
-        }
-
-        private IntPtr HwndHook(IntPtr hwnd, int msg, IntPtr wp, IntPtr lp, ref bool handled)
-        {
-            if (msg == SystemInteropService.WM_HOTKEY && wp.ToInt32() == SystemInteropService.HOTKEY_ID)
-            {
-                ToggleOverlayVisibility();
-                handled = true;
-            }
-            return IntPtr.Zero;
-        }
-
         private void LaunchSelectedMap()
         {
             if (BeatmapGrid.SelectedItem is BeatmapRecord selectedMap)
@@ -651,14 +549,6 @@ namespace OsuScoutNew
                     {
                         MessageBox.Show("osu! is not currently running. The search query has been copied to your clipboard.");
                     }
-                    else if (_client == OsuClient.Lazer)
-                    {
-                        // Nothing hides the window when lazer starts playing, and a window on top
-                        // of fullscreen lazer fights it for the cursor and focus. Get out of the
-                        // way; Alt+S brings it back.
-                        _userManuallyHidden = true;
-                        this.Visibility = Visibility.Collapsed;
-                    }
                 }
                 catch (Exception ex)
                 {
@@ -667,32 +557,9 @@ namespace OsuScoutNew
             }
         }
 
-        private void ToggleOverlayVisibility()
-        {
-            if (this.Visibility == Visibility.Visible)
-            {
-                _userManuallyHidden = true;
-                // Give focus back first: once this window is hidden, Windows no longer lets it
-                // choose who gets focus. A fullscreen game minimised itself when this window
-                // took focus, so it is restored too.
-                SystemInteropService.FocusWindow(_returnFocusTo);
-                this.Visibility = Visibility.Collapsed;
-            }
-            else
-            {
-                // Remember where the user was, so hiding the window again puts them back.
-                _returnFocusTo = SystemInteropService.GetForegroundWindow();
-                _userManuallyHidden = false;
-                this.Visibility = Visibility.Visible;
-                this.WindowState = WindowState.Normal;
-                this.Activate();
-            }
-        }
-
         protected override void OnClosed(EventArgs e)
         {
             SaveSettings();
-            _memoryService?.Dispose();
             _liveTrackerService?.Dispose();
             _classifier?.Dispose();
             base.OnClosed(e);

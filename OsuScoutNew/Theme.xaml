@@ -79,26 +79,6 @@
         </Style.Triggers>
     </Style>
 
-    <!-- Text-only button, e.g. the support link. -->
-    <Style x:Key="LinkButton" TargetType="Button">
-        <Setter Property="Foreground" Value="{StaticResource Brush.TextDim}"/>
-        <Setter Property="Cursor" Value="Hand"/>
-        <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
-        <Setter Property="Template">
-            <Setter.Value>
-                <ControlTemplate TargetType="Button">
-                    <TextBlock x:Name="text" Text="{TemplateBinding Content}" VerticalAlignment="Center" Background="Transparent"/>
-                    <ControlTemplate.Triggers>
-                        <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="text" Property="Foreground" Value="{StaticResource Brush.Accent}"/>
-                            <Setter TargetName="text" Property="TextDecorations" Value="Underline"/>
-                        </Trigger>
-                    </ControlTemplate.Triggers>
-                </ControlTemplate>
-            </Setter.Value>
-        </Setter>
-    </Style>
-
     <!-- Small ✕ beside a filter's value that clears it. -->
     <Style x:Key="ResetButton" TargetType="Button">
         <Setter Property="Foreground" Value="{StaticResource Brush.TextMuted}"/>
