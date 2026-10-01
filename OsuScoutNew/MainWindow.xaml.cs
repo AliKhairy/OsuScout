@@ -1,6 +1,7 @@
 using OsuMemoryDataProvider;
 using OsuMemoryDataProvider.OsuMemoryModels;
 using OsuScout;
+using OsuScoutNew.Core;
 using OsuScoutNew.Services;
 using System;
 using System.Collections.Generic;
@@ -23,7 +24,7 @@ namespace OsuScoutNew
         private bool _userManuallyHidden = false;
         private HwndSource _hwndSource;
         private OsuClassifier _classifier;
-        private string _osuSongsPath;
+        private IBeatmapSource _source;
 
         private OsuMemoryService _memoryService;
         private OsuLibraryService _libraryService;
@@ -48,9 +49,9 @@ namespace OsuScoutNew
             _taggedWithModel = settings.TaggedWithModel;
 
             // A folder picked with ⚙ DIR wins; auto-detection is only the fallback.
-            _osuSongsPath = System.IO.Directory.Exists(settings.SongsFolder)
+            _source = new StableSongsSource(System.IO.Directory.Exists(settings.SongsFolder)
                 ? settings.SongsFolder
-                : OsuLocationService.FindOsuSongsFolder();
+                : OsuLocationService.FindOsuSongsFolder());
 
             _classifier = new OsuClassifier();
             _classifier.Initialize();
@@ -58,7 +59,7 @@ namespace OsuScoutNew
             _libraryService = new OsuLibraryService(_classifier);
             _liveTrackerService = new OsuLiveTrackerService(_libraryService);
             _liveTrackerService.MapProcessed += () => Dispatcher.Invoke(UpdateGrid);
-            _liveTrackerService.StartTracking(_osuSongsPath);
+            _liveTrackerService.StartTracking(_source);
 
             this.Loaded += MainWindow_Loaded;
             this.Closed += MainWindow_Closed;
@@ -72,13 +73,13 @@ namespace OsuScoutNew
             // The library always comes from one folder (changing folder wipes it), so one map is
             // enough to tell.
             string anyMap;
-            using (var db = new OsuDbContext())
+            using (var db = new OsuDbContext(_source.Kind))
             {
                 db.Database.EnsureCreated();
                 anyMap = db.Beatmaps.Select(b => b.FilePath).FirstOrDefault();
             }
             bool libraryIsFromThisFolder = anyMap == null
-                || (_osuSongsPath != null && anyMap.StartsWith(_osuSongsPath, StringComparison.OrdinalIgnoreCase));
+                || (_source.Root != null && anyMap.StartsWith(_source.Root, StringComparison.OrdinalIgnoreCase));
             if (libraryIsFromThisFolder) RunBackgroundScan();
 
             TagSearchBox.ItemsSource = _classifier.Config.tags;
@@ -106,9 +107,9 @@ namespace OsuScoutNew
 
             try
             {
-                if (!System.IO.Directory.Exists(_osuSongsPath))
+                if (!System.IO.Directory.Exists(_source.Root))
                 {
-                    MessageBox.Show($"FATAL: Could not find osu! at {_osuSongsPath}. Did you install it somewhere else?");
+                    MessageBox.Show($"FATAL: Could not find osu! at {_source.Root}. Did you install it somewhere else?");
                     return;
                 }
 
@@ -121,12 +122,12 @@ namespace OsuScoutNew
                         ScanProgressBar.Value = percent;
                         ScanProgressText.Text = $"Updating tags for the new model... {percent}%";
                     });
-                    await _libraryService.RetagLibraryAsync(retagProgress);
+                    await _libraryService.RetagLibraryAsync(_source.Kind, retagProgress);
                     _taggedWithModel = _classifier.ModelId;
                     SaveSettings();
                 }
 
-                await _libraryService.ScanLibraryAsync(_osuSongsPath, progress);
+                await _libraryService.ScanLibraryAsync(_source, progress);
             }
             catch (Exception ex)
             {
@@ -248,7 +249,7 @@ namespace OsuScoutNew
                                          .ToList();
 
             // Needs to be updated in OsuLibraryService to accept min and max for all properties
-            var results = await _libraryService.SearchBeatmapsAsync(searchText, requiredTags, excludedTags, minStars, maxStars, minBpm, maxBpm, minLength, maxLength);
+            var results = await _libraryService.SearchBeatmapsAsync(_source.Kind, searchText, requiredTags, excludedTags, minStars, maxStars, minBpm, maxBpm, minLength, maxLength);
             BeatmapGrid.ItemsSource = results;
             ApplySort();
         }
@@ -287,7 +288,7 @@ namespace OsuScoutNew
         {
             SettingsService.Save(new AppSettings
             {
-                SongsFolder = _osuSongsPath,
+                SongsFolder = _source.Root,
                 SearchText = SearchBox.Text,
                 TagText = TagSearchBox.Text,
                 MinStars = Finite(LowerBound(StarSlider)),
@@ -336,12 +337,12 @@ namespace OsuScoutNew
             if (dialog.ShowDialog() == true)
             {
                 string newPath = dialog.FolderName;
-                if (newPath.Equals(_osuSongsPath, StringComparison.OrdinalIgnoreCase)) return;
+                if (newPath.Equals(_source.Root, StringComparison.OrdinalIgnoreCase)) return;
 
-                _osuSongsPath = newPath;
-                _liveTrackerService.StartTracking(_osuSongsPath);
+                _source = new StableSongsSource(newPath);
+                _liveTrackerService.StartTracking(_source);
 
-                using (var db = new OsuDbContext())
+                using (var db = new OsuDbContext(_source.Kind))
                 {
                     db.Beatmaps.RemoveRange(db.Beatmaps);
                     db.SaveChanges();

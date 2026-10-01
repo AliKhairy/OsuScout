@@ -37,6 +37,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\OsuScoutNew.Core\OsuScoutNew.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <None Update="Assets\ensemble_model_1.onnx">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>

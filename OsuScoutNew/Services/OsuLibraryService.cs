@@ -1,4 +1,5 @@
 using OsuScout;
+using OsuScoutNew.Core;
 using Rosu;
 using Rosu.Net;
 using Rosu.Net.Attributes;
@@ -23,11 +24,11 @@ namespace OsuScoutNew.Services
         }
 
         // --- DATABASE QUERYING ---
-        public async Task<List<BeatmapRecord>> SearchBeatmapsAsync(string searchText, List<string> requiredTags, List<string> excludedTags, double minStars, double maxStars, double minBpm, double maxBpm, double minLength, double maxLength)
+        public async Task<List<BeatmapRecord>> SearchBeatmapsAsync(OsuClient client, string searchText, List<string> requiredTags, List<string> excludedTags, double minStars, double maxStars, double minBpm, double maxBpm, double minLength, double maxLength)
         {
             return await Task.Run(() =>
             {
-                using var db = new OsuDbContext();
+                using var db = new OsuDbContext(client);
                 var query = db.Beatmaps.AsQueryable();
 
                 // An infinite bound means "no limit", so it's left out of the SQL entirely.
@@ -58,16 +59,16 @@ namespace OsuScoutNew.Services
         }
 
         // --- HEAVY FILE SCANNING ---
-        public async Task ScanLibraryAsync(string osuSongsPath, IProgress<int> progress = null)
+        public async Task ScanLibraryAsync(IBeatmapSource source, IProgress<int> progress = null)
         {
-            if (!Directory.Exists(osuSongsPath)) return;
+            if (!Directory.Exists(source.Root)) return;
 
             await Task.Run(() =>
             {
-                var allOsuFiles = Directory.GetFiles(osuSongsPath, "*.osu", SearchOption.AllDirectories);
+                var allOsuFiles = source.EnumerateMapFiles().ToArray();
 
                 HashSet<string> existingPaths;
-                using (var db = new OsuDbContext())
+                using (var db = new OsuDbContext(source.Kind))
                 {
                     existingPaths = db.Beatmaps.Select(b => b.FilePath).ToHashSet();
                 }
@@ -141,7 +142,7 @@ namespace OsuScoutNew.Services
 
                 if (batchRecords.Count > 0)
                 {
-                    using (var db = new OsuDbContext())
+                    using (var db = new OsuDbContext(source.Kind))
                     {
                         db.ChangeTracker.AutoDetectChangesEnabled = false;
                         db.Beatmaps.AddRange(batchRecords);
@@ -169,12 +170,12 @@ namespace OsuScoutNew.Services
         // re-computes the tags of every stored map with the current model and leaves
         // everything else about the record alone. Maps whose file is gone or no longer
         // parses keep their old tags rather than being dropped.
-        public async Task RetagLibraryAsync(IProgress<int> progress = null)
+        public async Task RetagLibraryAsync(OsuClient client, IProgress<int> progress = null)
         {
             await Task.Run(() =>
             {
                 List<(int id, string path)> rows;
-                using (var db = new OsuDbContext())
+                using (var db = new OsuDbContext(client))
                 {
                     rows = db.Beatmaps.Select(b => new { b.Id, b.FilePath }).AsEnumerable()
                                       .Select(b => (b.Id, b.FilePath)).ToList();
@@ -216,7 +217,7 @@ namespace OsuScoutNew.Services
                     }
                 });
 
-                using (var db = new OsuDbContext())
+                using (var db = new OsuDbContext(client))
                 {
                     foreach (var record in db.Beatmaps)
                     {
@@ -274,7 +275,7 @@ namespace OsuScoutNew.Services
             return (Math.Round(bpm), length);
         }
         // Add this to OsuLibraryService.cs
-        public void ProcessAndSaveSingleMap(string filePath)
+        public void ProcessAndSaveSingleMap(IBeatmapSource source, string filePath)
         {
             try
             {
@@ -306,7 +307,7 @@ namespace OsuScoutNew.Services
 
                 var stats = ExtractBpmAndLength(filePath);
 
-                using (var db = new OsuDbContext())
+                using (var db = new OsuDbContext(source.Kind))
                 {
                     if (db.Beatmaps.Any(b => b.FilePath == filePath)) return;
 

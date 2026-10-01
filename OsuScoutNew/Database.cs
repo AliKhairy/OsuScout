@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using Microsoft.EntityFrameworkCore;
+using OsuScoutNew.Core;
 
 namespace OsuScout
 {
@@ -23,13 +24,25 @@ namespace OsuScout
     // 2. The Database Context (The actual connection engine)
     public class OsuDbContext : DbContext
     {
+        // Each client's library lives in its own file, so they can never mix.
+        private readonly OsuClient _client;
+
+        public OsuDbContext(OsuClient client)
+        {
+            _client = client;
+        }
+
         public DbSet<BeatmapRecord> Beatmaps { get; set; }
+
+        // Stable keeps the original name, so existing users keep their library.
+        public static string FileName(OsuClient client) =>
+            client == OsuClient.Lazer ? "osuscout-lazer.db" : "osuscout.db";
 
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         {
             string folder = System.IO.Path.Combine(System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData), "OsuScout");
             System.IO.Directory.CreateDirectory(folder);
-            string dbPath = System.IO.Path.Combine(folder, "osuscout.db");
+            string dbPath = System.IO.Path.Combine(folder, FileName(_client));
             optionsBuilder.UseSqlite($"Data Source={dbPath}");
         }
     }
