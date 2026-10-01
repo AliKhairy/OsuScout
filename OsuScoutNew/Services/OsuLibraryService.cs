@@ -17,6 +17,9 @@ namespace OsuScoutNew.Services
         private readonly OsuClassifier _classifier;
         private readonly object _aiLock = new object();
 
+        // Maps scanned between saves to the database.
+        private const int ScanChunkSize = 1000;
+
         public OsuLibraryService(OsuClassifier classifier)
         {
             _classifier = classifier;
@@ -79,76 +82,93 @@ namespace OsuScoutNew.Services
                 int processedFiles = 0;
                 int lastReportedPercent = -1;
 
-                var batchRecords = new ConcurrentBag<BeatmapRecord>();
-
-                Parallel.ForEach(filesToProcess, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount }, filePath =>
+                // Saved a chunk at a time, so a scan that's cut short (the app closed or
+                // killed) keeps what it finished and the next launch scans only the rest.
+                foreach (string[] chunk in filesToProcess.Chunk(ScanChunkSize))
                 {
-                    try
+                    var batchRecords = new ConcurrentBag<BeatmapRecord>();
+
+                    Parallel.ForEach(chunk, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount }, filePath =>
                     {
-                        var parser = new OsuParser(filePath);
-                        parser.ReadFile();
-                        if (parser.Metadata.GetValueOrDefault("Mode", "0") != "0") return;
-
-                        var rawObjects = parser.ExtractRawHitObjects();
-                        if (rawObjects.Count == 0) return;
-
-                        float[] networkInputs = ComputeFeatures(parser, rawObjects);
-                        if (networkInputs == null) return;
-
-                        List<string> predictedTags;
-                        lock (_aiLock)
-                        {
-                            predictedTags = _classifier.Predict(networkInputs);
-                        }
-                        // A map the model has no confident opinion on is still a map the user owns:
-                        // store it with no tags so it stays searchable instead of vanishing.
-
-                        double calculatedStars = 0;
                         try
                         {
-                            using Beatmap ppMap = Beatmap.FromPath(filePath);
-                            DifficultyAttributes diffAttrs = ppMap.CalculateDifficulty(mods: 0);
-                            calculatedStars = diffAttrs.Values.stars;
+                            var parser = new OsuParser(filePath);
+                            parser.ReadFile();
+                            if (parser.Metadata.GetValueOrDefault("Mode", "0") != "0") return;
+
+                            var rawObjects = parser.ExtractRawHitObjects();
+                            if (rawObjects.Count == 0) return;
+
+                            float[] networkInputs = ComputeFeatures(parser, rawObjects);
+                            if (networkInputs == null) return;
+
+                            List<string> predictedTags;
+                            lock (_aiLock)
+                            {
+                                predictedTags = _classifier.Predict(networkInputs);
+                            }
+                            // A map the model has no confident opinion on is still a map the user owns:
+                            // store it with no tags so it stays searchable instead of vanishing.
+
+                            var stats = ExtractBpmAndLength(filePath);
+
+                            batchRecords.Add(new BeatmapRecord
+                            {
+                                FilePath = filePath,
+                                Title = parser.Metadata.GetValueOrDefault("Title", "Unknown"),
+                                Artist = parser.Metadata.GetValueOrDefault("Artist", "Unknown"),
+                                Version = parser.Metadata.GetValueOrDefault("Version", "Unknown"),
+                                BeatmapID = parser.Metadata.GetValueOrDefault("BeatmapID", "0"),
+                                BPM = stats.bpm,
+                                LengthSeconds = stats.length,
+                                Tags = string.Join(",", predictedTags),
+                                StarRating = CalculateStars(filePath, parser)
+                            });
                         }
                         catch { }
 
-                        var stats = ExtractBpmAndLength(filePath);
+                        int currentCount = Interlocked.Increment(ref processedFiles);
+                        int currentPercent = (int)((currentCount / (double)totalFiles) * 100);
 
-                        batchRecords.Add(new BeatmapRecord
+                        if (currentPercent > lastReportedPercent && progress != null)
                         {
-                            FilePath = filePath,
-                            Title = parser.Metadata.GetValueOrDefault("Title", "Unknown"),
-                            Artist = parser.Metadata.GetValueOrDefault("Artist", "Unknown"),
-                            Version = parser.Metadata.GetValueOrDefault("Version", "Unknown"),
-                            BeatmapID = parser.Metadata.GetValueOrDefault("BeatmapID", "0"),
-                            BPM = stats.bpm,
-                            LengthSeconds = stats.length,
-                            Tags = string.Join(",", predictedTags),
-                            StarRating = calculatedStars
-                        });
-                    }
-                    catch { }
+                            progress.Report(currentPercent);
+                            lastReportedPercent = currentPercent;
+                        }
+                    });
 
-                    int currentCount = Interlocked.Increment(ref processedFiles);
-                    int currentPercent = (int)((currentCount / (double)totalFiles) * 100);
-
-                    if (currentPercent > lastReportedPercent && progress != null)
+                    if (batchRecords.Count > 0)
                     {
-                        progress.Report(currentPercent);
-                        lastReportedPercent = currentPercent;
-                    }
-                });
-
-                if (batchRecords.Count > 0)
-                {
-                    using (var db = new OsuDbContext())
-                    {
-                        db.ChangeTracker.AutoDetectChangesEnabled = false;
-                        db.Beatmaps.AddRange(batchRecords);
-                        db.SaveChanges();
+                        using (var db = new OsuDbContext())
+                        {
+                            db.ChangeTracker.AutoDetectChangesEnabled = false;
+                            db.Beatmaps.AddRange(batchRecords);
+                            db.SaveChanges();
+                        }
                     }
                 }
             });
+        }
+
+        // Star rating from rosu-pp, or 0 when it can't or shouldn't be computed.
+        // rosu runs in native code, where a map that makes it build too many slider
+        // ticks takes the whole app down with it (issue #12), so StarRatingGuard
+        // vets the map first. rosu's own IsSuspicious is not used: it rejects real
+        // gimmick maps (Centipede's visualisation diff, for one) that it rates in
+        // milliseconds.
+        private static double CalculateStars(string filePath, OsuParser parser)
+        {
+            if (!StarRatingGuard.IsSafeToRate(parser)) return 0;
+            try
+            {
+                using Beatmap ppMap = Beatmap.FromPath(filePath);
+                using DifficultyAttributes diffAttrs = ppMap.CalculateDifficulty(mods: 0);
+                return diffAttrs.Values.stars;
+            }
+            catch
+            {
+                return 0;
+            }
         }
 
         // The model's input vector, from whichever extractor its model_config.json
@@ -295,15 +315,7 @@ namespace OsuScoutNew.Services
                 }
                 // Untagged maps are kept (see ScanLibraryAsync) so they remain searchable.
 
-                double calculatedStars = 0;
-                try
-                {
-                    using Beatmap ppMap = Beatmap.FromPath(filePath);
-                    DifficultyAttributes diffAttrs = ppMap.CalculateDifficulty(mods: 0);
-                    calculatedStars = diffAttrs.Values.stars;
-                }
-                catch { }
-
+                double calculatedStars = CalculateStars(filePath, parser);
                 var stats = ExtractBpmAndLength(filePath);
 
                 using (var db = new OsuDbContext())
