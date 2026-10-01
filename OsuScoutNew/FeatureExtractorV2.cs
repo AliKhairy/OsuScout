@@ -4,7 +4,7 @@ using System.Linq;
 
 namespace OsuScout
 {
-    // The v2 map feature vector: a line-by-line port of features_v2.py in the
+    // The v2 map feature vector: a line-by-line port of osu_tagger/features/v2.py in the
     // training repo, which is the normative source (see docs/feature_v2_spec.md
     // there). v1 (FeatureExtractor.cs) is left untouched so older model files
     // keep working; model_config.json's feature_version says which one to run.
@@ -14,7 +14,7 @@ namespace OsuScout
     // compares this against Python's output for the same .osu file.
     public static class FeatureExtractorV2
     {
-        // --- CONSTANTS: every one mirrors features_v2.py under the same name ---
+        // --- CONSTANTS: every one mirrors osu_tagger/features/v2.py under the same name ---
         private const double DefaultCircleSize = 4.0;
         private const double DefaultApproachRate = 9.0;
         private const double DefaultOverallDifficulty = 8.0;

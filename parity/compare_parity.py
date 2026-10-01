@@ -1,7 +1,7 @@
 """
 compare_parity.py -assert the Python and C# feature extractors agree.
 
-Loads two JSON dumps (one from the training repo's parity_dump.py, one from
+Loads two JSON dumps (one from the training repo's osu_tagger.parity.dump, one from
 parity/ParityDump) and compares them element-by-element within a tolerance that
 absorbs float64-vs-float32 rounding while still catching real logic drift.
 
@@ -75,7 +75,7 @@ def main():
     if len(py) != len(cs):
         print(f"RESULT: FAIL -length mismatch: python={len(py)} csharp={len(cs)}")
         print("  (the two extractors produce different-size vectors -check FEATURE_COUNT "
-              "in neural_model.py vs featureCount in FeatureExtractor.cs)")
+              "in the training repo's osu_tagger/features vs FeatureExtractor.cs)")
         raise SystemExit(1)
 
     n = len(py)

@@ -6,7 +6,7 @@
 //   v2: OsuParser.ReadFile -> ExtractRawHitObjects / GetDifficulty / GetTimingPoints
 //       -> FeatureExtractorV2.ExtractDouble
 // (see OsuScoutNew/Services/OsuLibraryService.cs). Its Python counterpart is
-// parity_dump.py in the training repo; compare the two dumps with compare_parity.py.
+// `python -m osu_tagger.parity.dump` in the training repo; compare the two dumps with compare_parity.py.
 //
 // v2 is dumped at full double precision (the app casts to float only for the ONNX
 // input), so parity can be checked far tighter than v1's float32 path allows.
