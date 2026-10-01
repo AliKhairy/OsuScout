@@ -114,7 +114,7 @@ namespace OsuScoutNew
             var pick = GameClients.PickOnFirstRun(stable, lazer);
             if (pick != null) return pick.Value;
 
-            var answer = MessageBox.Show(
+            var answer = MessageDialog.Show(null,
                 "Scoutsu found both osu!stable and osu!lazer on this PC.\n\nShow your osu!lazer library? Choose No for osu!stable.\n\nYou can switch at any time with the Library picker at the top.",
                 "Which osu!?", MessageBoxButton.YesNo, MessageBoxImage.Question);
             return answer == MessageBoxResult.Yes ? OsuClient.Lazer : OsuClient.Stable;
@@ -196,9 +196,10 @@ namespace OsuScoutNew
             {
                 if (!System.IO.Directory.Exists(_source.Root))
                 {
-                    MessageBox.Show(_client == OsuClient.Lazer
-                        ? "Could not find your osu!lazer data folder. Pick it with Folder…: it's the folder holding client.realm and a files folder."
-                        : $"FATAL: Could not find osu! at {_source.Root}. Did you install it somewhere else?");
+                    MessageDialog.Show(this, _client == OsuClient.Lazer
+                        ? "Could not find your osu!lazer data folder.\n\nPick it with Folder…: it's the folder holding client.realm and a folder called files."
+                        : $"Could not find osu! at {_source.Root}.\n\nIf you installed it somewhere else, pick your Songs folder with Folder….",
+                        "Folder not found", MessageBoxButton.OK, MessageBoxImage.Warning);
                     return;
                 }
 
@@ -228,7 +229,8 @@ namespace OsuScoutNew
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"CRASH LOG:\n\n{ex.Message}\n\n{ex.StackTrace}");
+                MessageDialog.Show(this, $"Something went wrong while scanning. Press Ctrl+C to copy this report.\n\n{ex.Message}\n\n{ex.StackTrace}",
+                    "Scan failed", MessageBoxButton.OK, MessageBoxImage.Error);
             }
             finally
             {
@@ -241,19 +243,12 @@ namespace OsuScoutNew
 
         // --- UI UTILITY HANDLERS ---
 
-        // A dark title bar to match the window (Windows 10 2004 and later; older builds
-        // used attribute 19 for the same thing, and anything older keeps a light one).
+        // Dark title bar, as on every window in the app.
         protected override void OnSourceInitialized(EventArgs e)
         {
             base.OnSourceInitialized(e);
-            IntPtr hwnd = new WindowInteropHelper(this).Handle;
-            int on = 1;
-            if (DwmSetWindowAttribute(hwnd, 20, ref on, sizeof(int)) != 0)
-                DwmSetWindowAttribute(hwnd, 19, ref on, sizeof(int));
+            SystemInteropService.UseDarkTitleBar(new WindowInteropHelper(this).Handle);
         }
-
-        [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
-        private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
 
         private void BeatmapGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
@@ -614,7 +609,8 @@ namespace OsuScoutNew
                 {
                     if (!LazerLocationService.IsDataFolder(newPath))
                     {
-                        MessageBox.Show("That isn't an osu!lazer data folder. The right one holds client.realm and a folder called files.");
+                        MessageDialog.Show(this, "That isn't an osu!lazer data folder. The right one holds client.realm and a folder called files.",
+                            "Not a lazer folder", MessageBoxButton.OK, MessageBoxImage.Warning);
                         return;
                     }
                     _lazerDataFolder = newPath;
@@ -652,9 +648,9 @@ namespace OsuScoutNew
                 var newVersion = await mgr.CheckForUpdatesAsync();
                 if (newVersion != null)
                 {
-                    var result = MessageBox.Show(
-                        $"A new update ({newVersion.TargetFullRelease.Version}) is available!\n\nWould you like to download and restart the app now?\nIf you click No, it will silently download and update automatically after you close the app.", 
-                        "Update Available", MessageBoxButton.YesNo, MessageBoxImage.Information);
+                    var result = MessageDialog.Show(this,
+                        $"A new update ({newVersion.TargetFullRelease.Version}) is available!\n\nWould you like to download and restart the app now?\nIf you click No, it will silently download and update automatically after you close the app.",
+                        "Update available", MessageBoxButton.YesNo, MessageBoxImage.Information);
 
                     if (result == MessageBoxResult.Yes)
                     {
@@ -718,12 +714,13 @@ namespace OsuScoutNew
 
                     if (!focused)
                     {
-                        MessageBox.Show("osu! is not currently running. The search query has been copied to your clipboard.");
+                        MessageDialog.Show(this, $"osu! isn't running, so Scoutsu couldn't switch to it.\n\nThe search is on your clipboard ({searchQuery}): paste it into song select once osu! is open.",
+                            "osu! isn't running", MessageBoxButton.OK, MessageBoxImage.Information);
                     }
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show($"Could not execute focus hook: {ex.Message}");
+                    MessageDialog.Show(this, $"Couldn't switch to osu!: {ex.Message}", "Couldn't switch to osu!", MessageBoxButton.OK, MessageBoxImage.Error);
                 }
             }
         }

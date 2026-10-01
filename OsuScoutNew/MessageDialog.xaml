@@ -1,0 +1,25 @@
+<Window x:Class="OsuScoutNew.MessageDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Style="{StaticResource WindowStyle}"
+        SizeToContent="WidthAndHeight" ResizeMode="NoResize" ShowInTaskbar="False"
+        MinWidth="380" MaxWidth="600" WindowStartupLocation="CenterOwner">
+    <DockPanel>
+        <Border DockPanel.Dock="Bottom" Background="{StaticResource Brush.Window}" BorderBrush="{StaticResource Brush.Separator}"
+                BorderThickness="0,1,0,0" Padding="14,10">
+            <StackPanel x:Name="ButtonRow" Orientation="Horizontal" HorizontalAlignment="Right"/>
+        </Border>
+
+        <Border Background="{StaticResource Brush.Panel}" Padding="20,18">
+            <DockPanel>
+                <Grid x:Name="Badge" DockPanel.Dock="Left" Width="26" Height="26" Margin="0,0,14,0" VerticalAlignment="Top" Visibility="Collapsed">
+                    <Ellipse x:Name="BadgeCircle" Fill="{StaticResource Brush.Field}" Stroke="{StaticResource Brush.BorderStrong}" StrokeThickness="1"/>
+                    <TextBlock x:Name="BadgeText" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold" FontSize="14"/>
+                </Grid>
+                <ScrollViewer MaxHeight="420" VerticalScrollBarVisibility="Auto">
+                    <TextBlock x:Name="MessageText" TextWrapping="Wrap" LineHeight="18" VerticalAlignment="Center"/>
+                </ScrollViewer>
+            </DockPanel>
+        </Border>
+    </DockPanel>
+</Window>

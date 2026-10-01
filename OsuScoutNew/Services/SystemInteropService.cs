@@ -24,7 +24,19 @@ namespace OsuScoutNew.Services
         [DllImport("user32.dll")]
         private static extern bool IsWindow(IntPtr hWnd);
 
+        [DllImport("dwmapi.dll")]
+        private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
+
         // --- ENCAPSULATED LOGIC ---
+
+        // A dark title bar to match the app (Windows 10 2004 and later; older builds used
+        // attribute 19 for the same thing, and anything older keeps a light one).
+        public static void UseDarkTitleBar(IntPtr hwnd)
+        {
+            int on = 1;
+            if (DwmSetWindowAttribute(hwnd, 20, ref on, sizeof(int)) != 0)
+                DwmSetWindowAttribute(hwnd, 19, ref on, sizeof(int));
+        }
 
         // Brings a window to the front. A game in fullscreen minimises itself when it loses
         // focus (lazer: MinimiseOnFocusLossInFullscreen), so it is restored first, but only
