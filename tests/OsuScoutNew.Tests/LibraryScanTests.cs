@@ -172,11 +172,32 @@ public sealed class LibraryScanTests : IClassFixture<ClassifierFixture>, IDispos
         var paths = FillSongs();
         await _library.ScanLibraryAsync(new StableSongsSource(_songs.Path));
 
-        var hits = await _library.SearchBeatmapsAsync(OsuClient.Stable, "zel", new(), new(),
-            double.NegativeInfinity, double.PositiveInfinity, double.NegativeInfinity, double.PositiveInfinity,
-            double.NegativeInfinity, double.PositiveInfinity);
+        var hits = await _library.SearchBeatmapsAsync(OsuClient.Stable, new MapFilter { SearchText = "zel" });
 
-        Assert.Contains(hits, h => h.FilePath == paths["jump"]);
+        Assert.Equal(new[] { paths["jump"] }, hits.Select(h => h.FilePath));
+    }
+
+    // parity fixtures: stream CS4 AR9.4 OD6 HP6, jump CS4 AR9 OD8.5 HP5.6, tech CS4.3 AR9.5 OD7 HP3
+    public static TheoryData<string, MapFilter, string[]> DifficultyFilters => new()
+    {
+        { "AR 9.4+", new MapFilter { AR = new Bounds(9.4, double.PositiveInfinity) }, new[] { "stream", "tech" } },
+        { "AR up to 9", new MapFilter { AR = new Bounds(double.NegativeInfinity, 9) }, new[] { "jump" } },
+        { "OD 6.5-8", new MapFilter { OD = new Bounds(6.5, 8) }, new[] { "tech" } },
+        { "CS 4.2+", new MapFilter { CS = new Bounds(4.2, double.PositiveInfinity) }, new[] { "tech" } },
+        { "HP 5+ and AR 9.4+", new MapFilter { HP = new Bounds(5, double.PositiveInfinity), AR = new Bounds(9.4, double.PositiveInfinity) }, new[] { "stream" } },
+        { "no limits", new MapFilter(), new[] { "jump", "stream", "tech" } },
+    };
+
+    [Theory]
+    [MemberData(nameof(DifficultyFilters))]
+    public async Task DifficultySettingsFilterTheList(string _, MapFilter filter, string[] expected)
+    {
+        var paths = FillSongs();
+        await _library.ScanLibraryAsync(new StableSongsSource(_songs.Path));
+
+        var hits = await _library.SearchBeatmapsAsync(OsuClient.Stable, filter);
+
+        Assert.Equal(expected.Select(n => paths[n]).OrderBy(p => p), hits.Select(h => h.FilePath).OrderBy(p => p));
     }
 
     [Fact]

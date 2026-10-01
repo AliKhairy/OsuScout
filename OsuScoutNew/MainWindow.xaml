@@ -104,10 +104,42 @@
                     </DockPanel>
                     <!-- Starts at 0 and keeps the handles a minute apart, so dragging the right handle all the
                          way left lands on "UP TO 1 MIN" (short / cut-ver maps) -->
-                    <mah:RangeSlider x:Name="LengthSlider" Minimum="0" Maximum="20" MinRange="1" LowerValue="0" UpperValue="20" TickFrequency="1" IsSnapToTickEnabled="True" LowerValueChanged="Slider_ValueChanged" UpperValueChanged="Slider_ValueChanged" Margin="0,0,0,18"/>
+                    <mah:RangeSlider x:Name="LengthSlider" Minimum="0" Maximum="20" MinRange="1" LowerValue="0" UpperValue="20" TickFrequency="1" IsSnapToTickEnabled="True" LowerValueChanged="Slider_ValueChanged" UpperValueChanged="Slider_ValueChanged" Margin="0,0,0,14"/>
+
+                    <DockPanel Margin="0,0,0,2" ToolTip="Circle size">
+                        <Button x:Name="CsResetButton" DockPanel.Dock="Right" Content="✕" Style="{StaticResource ResetButton}"
+                                Tag="{Binding ElementName=CsSlider}" Click="ResetSlider_Click" ToolTip="Clear CS filter"/>
+                        <TextBlock x:Name="CsValueText" DockPanel.Dock="Right" VerticalAlignment="Center"/>
+                        <TextBlock Text="CS" Style="{StaticResource SectionHeader}" Margin="0"/>
+                    </DockPanel>
+                    <mah:RangeSlider x:Name="CsSlider" Minimum="0" Maximum="10" MinRange="0.1" LowerValue="0" UpperValue="10" TickFrequency="0.1" IsSnapToTickEnabled="True" LowerValueChanged="Slider_ValueChanged" UpperValueChanged="Slider_ValueChanged" Margin="0,0,0,14"/>
+
+                    <DockPanel Margin="0,0,0,2" ToolTip="Approach rate">
+                        <Button x:Name="ArResetButton" DockPanel.Dock="Right" Content="✕" Style="{StaticResource ResetButton}"
+                                Tag="{Binding ElementName=ArSlider}" Click="ResetSlider_Click" ToolTip="Clear AR filter"/>
+                        <TextBlock x:Name="ArValueText" DockPanel.Dock="Right" VerticalAlignment="Center"/>
+                        <TextBlock Text="AR" Style="{StaticResource SectionHeader}" Margin="0"/>
+                    </DockPanel>
+                    <mah:RangeSlider x:Name="ArSlider" Minimum="0" Maximum="10" MinRange="0.1" LowerValue="0" UpperValue="10" TickFrequency="0.1" IsSnapToTickEnabled="True" LowerValueChanged="Slider_ValueChanged" UpperValueChanged="Slider_ValueChanged" Margin="0,0,0,14"/>
+
+                    <DockPanel Margin="0,0,0,2" ToolTip="Overall difficulty (accuracy)">
+                        <Button x:Name="OdResetButton" DockPanel.Dock="Right" Content="✕" Style="{StaticResource ResetButton}"
+                                Tag="{Binding ElementName=OdSlider}" Click="ResetSlider_Click" ToolTip="Clear OD filter"/>
+                        <TextBlock x:Name="OdValueText" DockPanel.Dock="Right" VerticalAlignment="Center"/>
+                        <TextBlock Text="OD" Style="{StaticResource SectionHeader}" Margin="0"/>
+                    </DockPanel>
+                    <mah:RangeSlider x:Name="OdSlider" Minimum="0" Maximum="10" MinRange="0.1" LowerValue="0" UpperValue="10" TickFrequency="0.1" IsSnapToTickEnabled="True" LowerValueChanged="Slider_ValueChanged" UpperValueChanged="Slider_ValueChanged" Margin="0,0,0,14"/>
+
+                    <DockPanel Margin="0,0,0,2" ToolTip="HP drain">
+                        <Button x:Name="HpResetButton" DockPanel.Dock="Right" Content="✕" Style="{StaticResource ResetButton}"
+                                Tag="{Binding ElementName=HpSlider}" Click="ResetSlider_Click" ToolTip="Clear HP filter"/>
+                        <TextBlock x:Name="HpValueText" DockPanel.Dock="Right" VerticalAlignment="Center"/>
+                        <TextBlock Text="HP" Style="{StaticResource SectionHeader}" Margin="0"/>
+                    </DockPanel>
+                    <mah:RangeSlider x:Name="HpSlider" Minimum="0" Maximum="10" MinRange="0.1" LowerValue="0" UpperValue="10" TickFrequency="0.1" IsSnapToTickEnabled="True" LowerValueChanged="Slider_ValueChanged" UpperValueChanged="Slider_ValueChanged" Margin="0,0,0,18"/>
 
                     <TextBlock Style="{StaticResource Hint}"
-                               Text="Click a column header to sort. Shift-click to sort by more than one column."/>
+                               Text="Click a column header to sort, Shift-click to sort by more than one. Right-click a header to hide columns or size them to fit."/>
                 </StackPanel>
             </ScrollViewer>
 

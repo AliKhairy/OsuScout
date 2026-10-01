@@ -25,23 +25,38 @@ namespace OsuScoutNew.Services
         }
 
         // --- DATABASE QUERYING ---
-        public async Task<List<BeatmapRecord>> SearchBeatmapsAsync(OsuClient client, string searchText, List<string> requiredTags, List<string> excludedTags, double minStars, double maxStars, double minBpm, double maxBpm, double minLength, double maxLength)
+        public async Task<List<BeatmapRecord>> SearchBeatmapsAsync(OsuClient client, MapFilter filter)
         {
             return await Task.Run(() =>
             {
                 using var db = new OsuDbContext(client);
                 var query = db.Beatmaps.AsQueryable();
 
-                // An infinite bound means "no limit", so it's left out of the SQL entirely.
-                double minSeconds = minLength * 60;
-                double maxSeconds = maxLength * 60;
+                // An infinite bound means "no limit", so it's left out of the SQL entirely. Plain
+                // locals (not filter.X.Min) keep each value a SQL parameter.
+                double minStars = filter.Stars.Min, maxStars = filter.Stars.Max;
+                double minBpm = filter.Bpm.Min, maxBpm = filter.Bpm.Max;
+                double minSeconds = filter.LengthMinutes.Min * 60, maxSeconds = filter.LengthMinutes.Max * 60;
+                double minCs = filter.CS.Min, maxCs = filter.CS.Max;
+                double minAr = filter.AR.Min, maxAr = filter.AR.Max;
+                double minOd = filter.OD.Min, maxOd = filter.OD.Max;
+                double minHp = filter.HP.Min, maxHp = filter.HP.Max;
                 if (!double.IsInfinity(minStars)) query = query.Where(m => m.StarRating >= minStars);
                 if (!double.IsInfinity(maxStars)) query = query.Where(m => m.StarRating <= maxStars);
                 if (!double.IsInfinity(minBpm)) query = query.Where(m => m.BPM >= minBpm);
                 if (!double.IsInfinity(maxBpm)) query = query.Where(m => m.BPM <= maxBpm);
                 if (!double.IsInfinity(minSeconds)) query = query.Where(m => m.LengthSeconds >= minSeconds);
                 if (!double.IsInfinity(maxSeconds)) query = query.Where(m => m.LengthSeconds <= maxSeconds);
+                if (!double.IsInfinity(minCs)) query = query.Where(m => m.CS >= minCs);
+                if (!double.IsInfinity(maxCs)) query = query.Where(m => m.CS <= maxCs);
+                if (!double.IsInfinity(minAr)) query = query.Where(m => m.AR >= minAr);
+                if (!double.IsInfinity(maxAr)) query = query.Where(m => m.AR <= maxAr);
+                if (!double.IsInfinity(minOd)) query = query.Where(m => m.OD >= minOd);
+                if (!double.IsInfinity(maxOd)) query = query.Where(m => m.OD <= maxOd);
+                if (!double.IsInfinity(minHp)) query = query.Where(m => m.HP >= minHp);
+                if (!double.IsInfinity(maxHp)) query = query.Where(m => m.HP <= maxHp);
 
+                string searchText = filter.SearchText;
                 if (!string.IsNullOrEmpty(searchText))
                 {
                     // SQLite's instr() (what Contains translates to) is case-sensitive, so both
@@ -53,8 +68,8 @@ namespace OsuScoutNew.Services
                                           || m.Version.ToLower().Contains(needle));
                 }
 
-                foreach (var tag in requiredTags) query = query.Where(m => m.Tags.Contains(tag));
-                foreach (var tag in excludedTags) query = query.Where(m => !m.Tags.Contains(tag));
+                foreach (var tag in filter.RequiredTags) query = query.Where(m => m.Tags.Contains(tag));
+                foreach (var tag in filter.ExcludedTags) query = query.Where(m => !m.Tags.Contains(tag));
 
                 return query.OrderByDescending(m => m.StarRating).ToList();
             });

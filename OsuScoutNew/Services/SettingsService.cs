@@ -37,6 +37,17 @@ namespace OsuScoutNew.Services
         public double? MaxBpm { get; set; }
         public double? MinLength { get; set; }
         public double? MaxLength { get; set; }
+        public double? MinCS { get; set; }
+        public double? MaxCS { get; set; }
+        public double? MinAR { get; set; }
+        public double? MaxAR { get; set; }
+        public double? MinOD { get; set; }
+        public double? MaxOD { get; set; }
+        public double? MinHP { get; set; }
+        public double? MaxHP { get; set; }
+
+        // Which map list columns are shown, and how wide. null = the defaults.
+        public List<ColumnSetting> Columns { get; set; }
 
         // OsuClassifier.ModelId of the model that produced the library's stored tags.
         // A different model on launch means those tags are stale (see RetagLibraryAsync).
@@ -59,6 +70,16 @@ namespace OsuScoutNew.Services
         public double Width { get; set; }
         public double Height { get; set; }
         public bool Maximized { get; set; }
+    }
+
+    // One map list column, keyed by the property it shows (its SortMemberPath).
+    public class ColumnSetting
+    {
+        public string Key { get; set; }
+        public bool Visible { get; set; } = true;
+        public double Width { get; set; }
+        // Star = a share of the leftover space (the default for text columns); otherwise pixels.
+        public bool Star { get; set; }
     }
 
     public class SortSetting

@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Threading;
 using System.Windows.Media;
 using System.Windows.Interop;
 using System.Threading.Tasks;
@@ -13,6 +14,7 @@ using Velopack;
 using Velopack.Sources;
 using System.ComponentModel;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using MahApps.Metro.Controls;
 
 namespace OsuScoutNew
@@ -38,6 +40,13 @@ namespace OsuScoutNew
         private List<SortDescription> _sort = new List<SortDescription>();
         private bool _restoringSettings;
 
+        // Every range filter: its slider, value label and clear button, and how a value reads.
+        private (RangeSlider Slider, TextBlock Label, Button Reset, Func<double, string> Format, string Unit)[] _ranges;
+
+        // The map list's columns as the XAML defines them, for "Reset columns".
+        private Dictionary<DataGridColumn, (DataGridLength Width, Visibility Visibility)> _defaultColumns;
+        private ContextMenu _columnMenu;
+
         // The model that produced each library's stored tags (AppSettings.TaggedWithModel and
         // LazerTaggedWithModel).
         private string _taggedWithModel;
@@ -60,6 +69,17 @@ namespace OsuScoutNew
         public MainWindow()
         {
             InitializeComponent();
+            _ranges = new (RangeSlider, TextBlock, Button, Func<double, string>, string)[]
+            {
+                (StarSlider, StarValueText, StarResetButton, v => $"{v:0.#}★", ""),
+                (BpmSlider, BpmValueText, BpmResetButton, v => $"{v:0}", ""),
+                (LengthSlider, LengthValueText, LengthResetButton, v => $"{v:0}", " min"),
+                (CsSlider, CsValueText, CsResetButton, v => $"{v:0.0}", ""),
+                (ArSlider, ArValueText, ArResetButton, v => $"{v:0.0}", ""),
+                (OdSlider, OdValueText, OdResetButton, v => $"{v:0.0}", ""),
+                (HpSlider, HpValueText, HpResetButton, v => $"{v:0.0}", ""),
+            };
+            SetUpColumnMenu();
             var settings = SettingsService.Load();
             _taggedWithModel = settings.TaggedWithModel;
             _lazerTaggedWithModel = settings.LazerTaggedWithModel;
@@ -265,11 +285,10 @@ namespace OsuScoutNew
         private void UpdateFilterLabels()
         {
             // Slider events fire during InitializeComponent, before every control exists yet.
-            if (LengthSlider == null) return;
+            if (_ranges == null) return;
 
-            ShowRange(StarSlider, StarValueText, StarResetButton, v => $"{v:0.#}★", "");
-            ShowRange(BpmSlider, BpmValueText, BpmResetButton, v => $"{v:0}", "");
-            ShowRange(LengthSlider, LengthValueText, LengthResetButton, v => $"{v:0}", " min");
+            foreach (var range in _ranges)
+                ShowRange(range.Slider, range.Label, range.Reset, range.Format, range.Unit);
         }
 
         // Describes a range the way UpperBound/LowerBound filter it: a handle at the end of the
@@ -292,20 +311,15 @@ namespace OsuScoutNew
 
         private async void UpdateGrid()
         {
-            if (SearchBox == null || TagSearchBox == null || StarSlider == null || BpmSlider == null || LengthSlider == null || _libraryService == null)
+            if (_ranges == null || SearchBox == null || TagSearchBox == null || _libraryService == null)
                 return;
             // Each restored value fires its own change event; one refresh at the end is enough.
             if (_restoringSettings) return;
 
             string searchText = SearchBox.Text.ToLower().Trim();
             string tagText = TagSearchBox.Text.ToLower().Trim();
-            double minStars = LowerBound(StarSlider);
             double maxStars = UpperBound(StarSlider);
             if (double.IsPositiveInfinity(maxStars) && searchText.Length == 0) maxStars = GimmickStarThreshold;
-            double minBpm = LowerBound(BpmSlider);
-            double maxBpm = UpperBound(BpmSlider);
-            double minLength = LowerBound(LengthSlider);
-            double maxLength = UpperBound(LengthSlider);
 
             var tagQueries = tagText.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
                                     .Select(t => t.Trim())
@@ -316,9 +330,22 @@ namespace OsuScoutNew
                                          .Select(t => t.Substring(1).Trim())
                                          .ToList();
 
-            // Needs to be updated in OsuLibraryService to accept min and max for all properties
+            var filter = new MapFilter
+            {
+                SearchText = searchText,
+                RequiredTags = requiredTags,
+                ExcludedTags = excludedTags,
+                Stars = new Bounds(LowerBound(StarSlider), maxStars),
+                Bpm = BoundsOf(BpmSlider),
+                LengthMinutes = BoundsOf(LengthSlider),
+                CS = BoundsOf(CsSlider),
+                AR = BoundsOf(ArSlider),
+                OD = BoundsOf(OdSlider),
+                HP = BoundsOf(HpSlider),
+            };
+
             var client = _client;
-            var results = await _libraryService.SearchBeatmapsAsync(client, searchText, requiredTags, excludedTags, minStars, maxStars, minBpm, maxBpm, minLength, maxLength);
+            var results = await _libraryService.SearchBeatmapsAsync(client, filter);
             // The user switched client while this ran: these rows belong to the other library.
             if (client != _client) return;
             BeatmapGrid.ItemsSource = results;
@@ -354,6 +381,11 @@ namespace OsuScoutNew
             SetRange(StarSlider, settings.MinStars, settings.MaxStars);
             SetRange(BpmSlider, settings.MinBpm, settings.MaxBpm);
             SetRange(LengthSlider, settings.MinLength, settings.MaxLength);
+            SetRange(CsSlider, settings.MinCS, settings.MaxCS);
+            SetRange(ArSlider, settings.MinAR, settings.MaxAR);
+            SetRange(OdSlider, settings.MinOD, settings.MaxOD);
+            SetRange(HpSlider, settings.MinHP, settings.MaxHP);
+            RestoreColumns(settings.Columns);
             _sort = (settings.Sort ?? new List<SortSetting>())
                 .Select(s => new SortDescription(s.Column, s.Descending ? ListSortDirection.Descending : ListSortDirection.Ascending))
                 .ToList();
@@ -376,6 +408,15 @@ namespace OsuScoutNew
                 MaxBpm = Finite(UpperBound(BpmSlider)),
                 MinLength = Finite(LowerBound(LengthSlider)),
                 MaxLength = Finite(UpperBound(LengthSlider)),
+                MinCS = Finite(LowerBound(CsSlider)),
+                MaxCS = Finite(UpperBound(CsSlider)),
+                MinAR = Finite(LowerBound(ArSlider)),
+                MaxAR = Finite(UpperBound(ArSlider)),
+                MinOD = Finite(LowerBound(OdSlider)),
+                MaxOD = Finite(UpperBound(OdSlider)),
+                MinHP = Finite(LowerBound(HpSlider)),
+                MaxHP = Finite(UpperBound(HpSlider)),
+                Columns = CurrentColumns(),
                 Sort = _sort.Select(s => new SortSetting { Column = s.PropertyName, Descending = s.Direction == ListSortDirection.Descending }).ToList(),
                 TaggedWithModel = _taggedWithModel,
                 LazerTaggedWithModel = _lazerTaggedWithModel,
@@ -430,6 +471,128 @@ namespace OsuScoutNew
         // track's range (under 1 minute, over 300 BPM, over 10 stars) could never be shown at all.
         private static double LowerBound(RangeSlider s) => s.LowerValue <= s.Minimum ? double.NegativeInfinity : s.LowerValue;
         private static double UpperBound(RangeSlider s) => s.UpperValue >= s.Maximum ? double.PositiveInfinity : s.UpperValue;
+        private static Bounds BoundsOf(RangeSlider s) => new Bounds(LowerBound(s), UpperBound(s));
+
+        // --- MAP LIST COLUMNS ---
+        // Right-clicking a column header opens a menu to show or hide columns and size them
+        // to fit. Columns are identified by the property they show (SortMemberPath).
+
+        private static string ColumnName(DataGridColumn column) =>
+            column.Header as string == "★" ? "Stars (★)" : column.Header as string;
+
+        private void SetUpColumnMenu()
+        {
+            _defaultColumns = BeatmapGrid.Columns.ToDictionary(c => c, c => (c.Width, c.Visibility));
+
+            _columnMenu = new ContextMenu();
+            _columnMenu.Opened += (_, _) => BuildColumnMenu();
+            BeatmapGrid.ColumnHeaderStyle = new Style(typeof(DataGridColumnHeader), (Style)FindResource(typeof(DataGridColumnHeader)))
+            {
+                Setters = { new Setter(ContextMenuProperty, _columnMenu) }
+            };
+        }
+
+        private void BuildColumnMenu()
+        {
+            _columnMenu.Items.Clear();
+            var toggles = new List<MenuItem>();
+
+            // The list always keeps at least one column: the last one shown can't be unticked.
+            void UpdateToggles()
+            {
+                int shown = BeatmapGrid.Columns.Count(c => c.Visibility == Visibility.Visible);
+                foreach (var toggle in toggles) toggle.IsEnabled = !(toggle.IsChecked && shown == 1);
+            }
+
+            foreach (var column in BeatmapGrid.Columns)
+            {
+                var toggle = new MenuItem
+                {
+                    Header = ColumnName(column),
+                    IsCheckable = true,
+                    IsChecked = column.Visibility == Visibility.Visible,
+                    StaysOpenOnClick = true
+                };
+                toggle.Click += (_, _) =>
+                {
+                    column.Visibility = toggle.IsChecked ? Visibility.Visible : Visibility.Collapsed;
+                    UpdateToggles();
+                    SaveSettings();
+                };
+                toggles.Add(toggle);
+                _columnMenu.Items.Add(toggle);
+            }
+            UpdateToggles();
+
+            _columnMenu.Items.Add(new Separator());
+            // The header that was right-clicked; none for the empty area right of the last column.
+            if ((_columnMenu.PlacementTarget as DataGridColumnHeader)?.Column is DataGridColumn clicked)
+                AddMenuAction($"Size \u201c{ColumnName(clicked)}\u201d to fit", () => SizeColumnsToFit(new[] { clicked }, fillWindow: false));
+            AddMenuAction("Size all columns to fit", () => SizeColumnsToFit(BeatmapGrid.Columns.Where(c => c.Visibility == Visibility.Visible), fillWindow: true));
+            AddMenuAction("Reset columns", ResetColumns);
+        }
+
+        private void AddMenuAction(string header, Action action)
+        {
+            var item = new MenuItem { Header = header };
+            item.Click += (_, _) => action();
+            _columnMenu.Items.Add(item);
+        }
+
+        // Measures each column against its header and the rows currently on screen (the list
+        // only creates the rows you can see), then pins the result so it doesn't keep changing
+        // as you scroll. With fillWindow, the text columns (the ones that share the space by
+        // default) split the width left over in proportion to how much text they hold, so
+        // long names can't push the other columns out of view; otherwise every column gets
+        // exactly its content width.
+        private void SizeColumnsToFit(IEnumerable<DataGridColumn> columns, bool fillWindow)
+        {
+            var list = columns.ToList();
+            foreach (var column in list) column.Width = new DataGridLength(1, DataGridLengthUnitType.Auto);
+            Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
+            {
+                foreach (var column in list)
+                {
+                    bool sharesSpace = fillWindow && _defaultColumns[column].Width.IsStar;
+                    column.Width = new DataGridLength(column.ActualWidth, sharesSpace ? DataGridLengthUnitType.Star : DataGridLengthUnitType.Pixel);
+                }
+                SaveSettings();
+            }));
+        }
+
+        private void ResetColumns()
+        {
+            foreach (var (column, (width, visibility)) in _defaultColumns)
+            {
+                column.Width = width;
+                column.Visibility = visibility;
+            }
+            SaveSettings();
+        }
+
+        private void RestoreColumns(List<ColumnSetting> saved)
+        {
+            if (saved == null) return;
+            foreach (var setting in saved)
+            {
+                var column = BeatmapGrid.Columns.FirstOrDefault(c => c.SortMemberPath == setting.Key);
+                if (column == null) continue;
+                column.Visibility = setting.Visible ? Visibility.Visible : Visibility.Collapsed;
+                if (setting.Width > 0)
+                    column.Width = new DataGridLength(setting.Width, setting.Star ? DataGridLengthUnitType.Star : DataGridLengthUnitType.Pixel);
+            }
+            // A hand-edited settings file could hide everything; an empty list helps nobody.
+            if (BeatmapGrid.Columns.All(c => c.Visibility != Visibility.Visible)) ResetColumns();
+        }
+
+        private List<ColumnSetting> CurrentColumns() =>
+            BeatmapGrid.Columns.Select(c => new ColumnSetting
+            {
+                Key = c.SortMemberPath,
+                Visible = c.Visibility == Visibility.Visible,
+                Star = c.Width.IsStar,
+                Width = c.Width.IsStar || c.Width.IsAbsolute ? c.Width.Value : c.ActualWidth
+            }).ToList();
 
         private void PlayButton_Click(object sender, RoutedEventArgs e) => LaunchSelectedMap();
 
