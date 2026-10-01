@@ -27,8 +27,13 @@
     <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.27.0" />
     <PackageReference Include="OsuMemoryDataProvider" Version="0.12.2" />
     <PackageReference Include="Rosu.Net" Version="1.0.4" />
-    <PackageReference Include="Velopack" Version="0.0.866" />
-    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.14" />
+    <!-- Must equal the vpk version in .github/workflows/release.yml, and must be a
+         version nuget.org really has: a missing one silently resolves to the next
+         higher, which is how 0.0.866 became 0.0.869 without anyone choosing it. -->
+    <PackageReference Include="Velopack" Version="0.0.869" />
+    <!-- Stay on 2.x: EF Core 10 is built against SQLitePCLRaw 2.1.x. 2.1.14 never
+         existed, so restore used to jump a major version to 3.0.0. -->
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.13" />
   </ItemGroup>
 
   <ItemGroup>
