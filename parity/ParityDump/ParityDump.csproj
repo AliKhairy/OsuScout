@@ -16,6 +16,7 @@
   <ItemGroup>
     <Compile Include="..\..\OsuScoutNew\OsuParser.cs" />
     <Compile Include="..\..\OsuScoutNew\FeatureExtractor.cs" />
+    <Compile Include="..\..\OsuScoutNew\FeatureExtractorV2.cs" />
   </ItemGroup>
 
 </Project>

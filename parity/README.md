@@ -72,6 +72,32 @@ python make_goldens.py /path/to/OsuScoutNew/parity/fixtures
 Regenerating is a deliberate, reviewable step - the diff on those JSON files is exactly
 the change in feature behaviour, and it should be inspected, not rubber-stamped.
 
+## v2 features
+
+`FeatureExtractorV2.cs` is the C# port of the training repo's `features_v2.py`
+(72 features). Which extractor the app runs is set by `feature_version` in
+`model_config.json`, so v1 model files keep working unchanged.
+
+```bash
+# Python side (training repo)
+venv/Scripts/python parity_dump.py --feature-version 2 downloads/downloaded_1000740.osu py.json
+# C# side (this repo)
+dotnet run --project parity/ParityDump -- --feature-version 2 "C:/path/to/downloaded_1000740.osu" cs.json
+python parity/compare_parity.py py.json cs.json 1e-9 1e-9
+```
+
+v2 is computed in double precision on both sides, so it is held to 1e-9 rather
+than v1's 1e-2: measured over 4961 maps, the worst difference is 9e-13. CI checks
+`fixtures/{stream,jump,tech}.python.v2.json` the same way it checks v1. Regenerate
+them from the training repo with:
+
+```bash
+python make_goldens.py /path/to/OsuScoutNew/parity/fixtures --feature-version 2
+```
+
+`--dir <folder> <out.json>` (with `--feature-version 2`) dumps every `.osu` in a
+folder in one run, for checking parity over many maps at once.
+
 ## When to run
 
 Any time you change the feature math — **before** you retrain/export/ship. Add a

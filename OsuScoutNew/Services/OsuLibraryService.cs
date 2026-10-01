@@ -92,8 +92,7 @@ namespace OsuScoutNew.Services
                         var rawObjects = parser.ExtractRawHitObjects();
                         if (rawObjects.Count == 0) return;
 
-                        var sections = FeatureExtractor.SplitIntoSections(rawObjects);
-                        float[] networkInputs = FeatureExtractor.AggregateMapFeatures(sections);
+                        float[] networkInputs = ComputeFeatures(parser, rawObjects);
                         if (networkInputs == null) return;
 
                         List<string> predictedTags;
@@ -148,6 +147,82 @@ namespace OsuScoutNew.Services
                         db.Beatmaps.AddRange(batchRecords);
                         db.SaveChanges();
                     }
+                }
+            });
+        }
+
+        // The model's input vector, from whichever extractor its model_config.json
+        // names: v1 (90 features) for older model files, v2 (72) for newer ones.
+        // Both require at least one playable section, as the training rows did.
+        private float[] ComputeFeatures(OsuParser parser, List<RawHitObject> rawObjects)
+        {
+            var sections = FeatureExtractor.SplitIntoSections(rawObjects);
+            if (sections.Count == 0) return null;
+            if (_classifier.Config.FeatureVersion == 2)
+                return FeatureExtractorV2.Extract(rawObjects, parser.GetDifficulty(), parser.GetTimingPoints());
+            return FeatureExtractor.AggregateMapFeatures(sections);
+        }
+
+        // --- RE-TAGGING AFTER A MODEL CHANGE ---
+        // ScanLibraryAsync only tags files it has never seen, so after a model update
+        // every map already in the library would keep the old model's tags. This
+        // re-computes the tags of every stored map with the current model and leaves
+        // everything else about the record alone. Maps whose file is gone or no longer
+        // parses keep their old tags rather than being dropped.
+        public async Task RetagLibraryAsync(IProgress<int> progress = null)
+        {
+            await Task.Run(() =>
+            {
+                List<(int id, string path)> rows;
+                using (var db = new OsuDbContext())
+                {
+                    rows = db.Beatmaps.Select(b => new { b.Id, b.FilePath }).AsEnumerable()
+                                      .Select(b => (b.Id, b.FilePath)).ToList();
+                }
+                if (rows.Count == 0) return;
+
+                var newTags = new ConcurrentDictionary<int, string>();
+                int done = 0, lastReported = -1;
+
+                Parallel.ForEach(rows, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount }, row =>
+                {
+                    try
+                    {
+                        if (!File.Exists(row.path)) return;
+                        var parser = new OsuParser(row.path);
+                        parser.ReadFile();
+                        var rawObjects = parser.ExtractRawHitObjects();
+                        if (rawObjects.Count == 0) return;
+
+                        float[] networkInputs = ComputeFeatures(parser, rawObjects);
+                        if (networkInputs == null) return;
+
+                        List<string> predictedTags;
+                        lock (_aiLock)
+                        {
+                            predictedTags = _classifier.Predict(networkInputs);
+                        }
+                        newTags[row.id] = string.Join(",", predictedTags);
+                    }
+                    catch { }
+                    finally
+                    {
+                        int percent = (int)((Interlocked.Increment(ref done) / (double)rows.Count) * 100);
+                        if (percent > lastReported && progress != null)
+                        {
+                            progress.Report(percent);
+                            lastReported = percent;
+                        }
+                    }
+                });
+
+                using (var db = new OsuDbContext())
+                {
+                    foreach (var record in db.Beatmaps)
+                    {
+                        if (newTags.TryGetValue(record.Id, out string tags)) record.Tags = tags;
+                    }
+                    db.SaveChanges();
                 }
             });
         }
@@ -210,8 +285,7 @@ namespace OsuScoutNew.Services
                 var rawObjects = parser.ExtractRawHitObjects();
                 if (rawObjects.Count == 0) return;
 
-                var sections = FeatureExtractor.SplitIntoSections(rawObjects);
-                float[] networkInputs = FeatureExtractor.AggregateMapFeatures(sections);
+                float[] networkInputs = ComputeFeatures(parser, rawObjects);
                 if (networkInputs == null) return;
 
                 List<string> predictedTags;

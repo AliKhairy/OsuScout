@@ -23,6 +23,11 @@ namespace OsuScoutNew.Services
         public double? MinLength { get; set; }
         public double? MaxLength { get; set; }
 
+        // OsuClassifier.ModelId of the model that produced the library's stored tags.
+        // A different model on launch means those tags are stale (see RetagLibraryAsync).
+        // null for libraries tagged before this was recorded, which are re-tagged once.
+        public string TaggedWithModel { get; set; }
+
         // First launch: hardest maps first.
         public List<SortSetting> Sort { get; set; } = new List<SortSetting>
         {

@@ -34,6 +34,9 @@ namespace OsuScoutNew
         private List<SortDescription> _sort = new List<SortDescription>();
         private bool _restoringSettings;
 
+        // The model that produced the library's stored tags (AppSettings.TaggedWithModel).
+        private string _taggedWithModel;
+
         // Above this are gimmick maps (Aspire and the like) that would otherwise fill the top of a
         // stars-descending list. They only show up when the user searches for one by name.
         private const double GimmickStarThreshold = 15;
@@ -42,6 +45,7 @@ namespace OsuScoutNew
         {
             InitializeComponent();
             var settings = SettingsService.Load();
+            _taggedWithModel = settings.TaggedWithModel;
 
             // A folder picked with ⚙ DIR wins; auto-detection is only the fallback.
             _osuSongsPath = System.IO.Directory.Exists(settings.SongsFolder)
@@ -106,6 +110,20 @@ namespace OsuScoutNew
                 {
                     MessageBox.Show($"FATAL: Could not find osu! at {_osuSongsPath}. Did you install it somewhere else?");
                     return;
+                }
+
+                // A model update (new app version, new model files) makes every stored
+                // tag stale, and the scan below only tags new maps. Re-tag first.
+                if (_taggedWithModel != _classifier.ModelId)
+                {
+                    var retagProgress = new Progress<int>(percent =>
+                    {
+                        ScanProgressBar.Value = percent;
+                        ScanProgressText.Text = $"Updating tags for the new model... {percent}%";
+                    });
+                    await _libraryService.RetagLibraryAsync(retagProgress);
+                    _taggedWithModel = _classifier.ModelId;
+                    SaveSettings();
                 }
 
                 await _libraryService.ScanLibraryAsync(_osuSongsPath, progress);
@@ -278,7 +296,8 @@ namespace OsuScoutNew
                 MaxBpm = Finite(UpperBound(BpmSlider)),
                 MinLength = Finite(LowerBound(LengthSlider)),
                 MaxLength = Finite(UpperBound(LengthSlider)),
-                Sort = _sort.Select(s => new SortSetting { Column = s.PropertyName, Descending = s.Direction == ListSortDirection.Descending }).ToList()
+                Sort = _sort.Select(s => new SortSetting { Column = s.PropertyName, Descending = s.Direction == ListSortDirection.Descending }).ToList(),
+                TaggedWithModel = _taggedWithModel
             });
         }
 
