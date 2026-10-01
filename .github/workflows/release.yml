@@ -144,35 +144,41 @@ jobs:
         run: dotnet restore OsuScoutNew/OsuScoutNew.csproj
 
       # Self-contained: bundles the .NET runtime into the output, so users do
-      # not have to install .NET first. It is why the existing releases are
-      # ~180 MB, and changing it would break every installed copy.
+      # not have to install .NET first, and changing it would break every
+      # installed copy.
+      # Start from an empty folder. vpk packs EVERYTHING in it, and the copy
+      # rules in the csproj are "copy if newer" - so leftover files are both
+      # shipped and can win over the real ones. Up to 1.2.0 an old build was
+      # committed in publish/: it tripled the download (~235 MB vs ~75 MB) and
+      # made 1.2.0 ship the previous model instead of the one in Assets/.
       - name: Publish
         run: |
+          rm -rf publish
           dotnet publish OsuScoutNew/OsuScoutNew.csproj \
             -c Release \
             -r win-x64 \
             --self-contained true \
             -o publish
 
-      # Fail early and loudly if the ONNX models are missing from the build
-      # output. Without them the app installs fine and then cannot classify
-      # anything - a failure users would hit, not CI. They are copied via
-      # CopyToOutputDirectory in the csproj, which is easy to break by accident.
-      - name: Verify model assets are present
+      # Fail loudly unless the packaged model is EXACTLY the one in the repo.
+      # Checking only that the files exist let 1.2.0 ship a stale model: the
+      # files were there, just old. Byte-for-byte comparison against
+      # OsuScoutNew/Assets catches missing, stale and half-updated models.
+      - name: Verify the packaged model is the repo's model
         run: |
-          missing=0
-          for i in 1 2 3 4 5; do
-            if [ ! -f "publish/Assets/ensemble_model_${i}.onnx" ]; then
-              echo "Missing publish/Assets/ensemble_model_${i}.onnx"
-              missing=1
+          bad=0
+          for f in ensemble_model_1.onnx ensemble_model_2.onnx ensemble_model_3.onnx \
+                   ensemble_model_4.onnx ensemble_model_5.onnx model_config.json; do
+            if [ ! -f "publish/Assets/$f" ]; then
+              echo "::error::Missing publish/Assets/$f"
+              bad=1
+            elif ! cmp -s "OsuScoutNew/Assets/$f" "publish/Assets/$f"; then
+              echo "::error::publish/Assets/$f differs from OsuScoutNew/Assets/$f"
+              bad=1
             fi
           done
-          if [ ! -f "publish/Assets/model_config.json" ]; then
-            echo "Missing publish/Assets/model_config.json"
-            missing=1
-          fi
-          [ "$missing" -eq 0 ] || exit 1
-          echo "All 5 ONNX models and model_config.json are present."
+          [ "$bad" -eq 0 ] || exit 1
+          echo "All 5 ONNX models and model_config.json match OsuScoutNew/Assets byte for byte."
 
       # Pinned to the Velopack version in the csproj. The packaging tool and the
       # runtime library have to agree on the package format, so letting this
