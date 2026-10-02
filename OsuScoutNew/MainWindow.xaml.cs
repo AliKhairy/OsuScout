@@ -49,6 +49,13 @@ namespace OsuScoutNew
         private List<SortDescription> _sort = new List<SortDescription>();
         private bool _restoringSettings;
 
+        // A slider fires a change for every step it passes. Searching on each one made dragging
+        // stutter, so the search waits until the filters have been still this long; the labels
+        // still follow the handles at once.
+        private readonly DispatcherTimer _filterDelay = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
+        // Searches can finish out of order; only the newest one's results are shown.
+        private int _latestSearch;
+
         // Every range filter: its slider, value label and clear button, and how a value reads.
         private (RangeSlider Slider, TextBlock Label, Button Reset, string Name, Func<double, string> Format, string Unit)[] _ranges;
         private RangeSlider[] _moreSliders;
@@ -88,6 +95,11 @@ namespace OsuScoutNew
 
         public MainWindow()
         {
+            _filterDelay.Tick += (_, _) =>
+            {
+                _filterDelay.Stop();
+                UpdateGrid();
+            };
             InitializeComponent();
             _ranges = new (RangeSlider, TextBlock, Button, string, Func<double, string>, string)[]
             {
@@ -422,14 +434,21 @@ namespace OsuScoutNew
             if (!_restoringSettings && _libraryService != null) SaveSettings();
         }
 
-        private void SearchInput_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e) => UpdateGrid();
+        private void SearchInput_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e) => UpdateGridSoon();
 
-        private void TagSearchBox_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e) => UpdateGrid();
+        private void TagSearchBox_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e) => UpdateGridSoon();
 
         private void Slider_ValueChanged(object sender, RoutedEventArgs e)
         {
             UpdateFilterLabels();
-            if (SearchBox != null) UpdateGrid();
+            if (SearchBox != null) UpdateGridSoon();
+        }
+
+        // Searches once the filters stop changing (see _filterDelay).
+        private void UpdateGridSoon()
+        {
+            _filterDelay.Stop();
+            _filterDelay.Start();
         }
 
         private void ResetSlider_Click(object sender, RoutedEventArgs e)
@@ -509,9 +528,11 @@ namespace OsuScoutNew
             };
 
             var client = _client;
+            int search = ++_latestSearch;
             var results = await _libraryService.SearchBeatmapsAsync(client, filter);
-            // The user switched client while this ran: these rows belong to the other library.
-            if (client != _client) return;
+            // A newer search was started while this one ran, or the user switched client (these
+            // rows would belong to the other library): show nothing from this one.
+            if (search != _latestSearch || client != _client) return;
 
             HighlightTerms = requiredTags;
             BeatmapGrid.ItemsSource = results;
@@ -554,17 +575,24 @@ namespace OsuScoutNew
 
         private void ApplySort()
         {
-            BeatmapGrid.Items.SortDescriptions.Clear();
             foreach (var column in BeatmapGrid.Columns)
                 column.SortDirection = null;
 
+            var applied = new List<(string Property, bool Descending)>();
             foreach (var sort in _sort)
             {
                 var column = BeatmapGrid.Columns.FirstOrDefault(c => c.SortMemberPath == sort.PropertyName);
                 if (column == null) continue;
 
                 column.SortDirection = sort.Direction;
-                BeatmapGrid.Items.SortDescriptions.Add(sort);
+                applied.Add((sort.PropertyName, sort.Direction == ListSortDirection.Descending));
+            }
+
+            // MapSort instead of Items.SortDescriptions: see MapSort for why.
+            if (System.Windows.Data.CollectionViewSource.GetDefaultView(BeatmapGrid.ItemsSource) is System.Windows.Data.ListCollectionView view)
+            {
+                var sort = new MapSort(applied);
+                view.CustomSort = sort.IsEmpty ? null : sort;
             }
         }
 

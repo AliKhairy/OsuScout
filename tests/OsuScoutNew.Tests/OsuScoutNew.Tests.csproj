@@ -33,6 +33,7 @@
     <Compile Include="..\..\OsuScoutNew\Services\MapFilter.cs" Link="App\MapFilter.cs" />
     <Compile Include="..\..\OsuScoutNew\Services\ScanLog.cs" Link="App\ScanLog.cs" />
     <Compile Include="..\..\OsuScoutNew\Services\KnownSkips.cs" Link="App\KnownSkips.cs" />
+    <Compile Include="..\..\OsuScoutNew\Services\MapSort.cs" Link="App\MapSort.cs" />
     <Compile Include="..\..\OsuScoutNew\StarRatingGuard.cs" Link="App\StarRatingGuard.cs" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.9" />
     <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.13" />
