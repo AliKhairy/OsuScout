@@ -19,12 +19,14 @@ Scoutsu finds, tags and searches the maps of either client. On first launch it p
 - **What gets copied.** On lazer, the beatmap ID, which song select matches to that exact map. On stable, and for maps with no online ID, artist, title and difficulty.
 
 ## Installation
-1. Go to the [Releases](https://github.com/AliKhairy/OsuScout/releases) page.
+1. Go to the [Releases](https://github.com/FrasierGH/OsuScout/releases) page.
 2. Download `Scoutsu-Setup.exe` from the latest release.
 3. Run the setup file. The application will automatically install and launch!
 4. A shortcut will be created on your desktop and start menu.
 
-Those releases come from the original project and support osu!stable only. To run this fork, build it with `dotnet publish OsuScoutNew/OsuScoutNew.csproj -c Release -r win-x64 --self-contained true -o publish` and start `publish\OsuScoutNew.exe`.
+This fork (osu!stable and osu!lazer) installs as its own app, next to the original [Scoutsu](https://github.com/AliKhairy/OsuScout) if you have it, and updates itself from this repository's releases.
+
+To build it yourself instead: `dotnet publish OsuScoutNew/OsuScoutNew.csproj -c Release -r win-x64 --self-contained true -o publish`, then run `publish\OsuScoutNew.exe`.
 
 ## License
 Copyright (C) 2026 AliKhairy

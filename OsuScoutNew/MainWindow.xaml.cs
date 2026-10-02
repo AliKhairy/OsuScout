@@ -664,7 +664,9 @@ namespace OsuScoutNew
         {
             try
             {
-                var mgr = new UpdateManager(new GithubSource("https://github.com/AliKhairy/OsuScout", null, false));
+                // This fork's own releases. The original project's would replace the lazer
+                // support with its stable-only build (it ships as a different app, OsuScoutNew).
+                var mgr = new UpdateManager(new GithubSource("https://github.com/FrasierGH/OsuScout", null, false));
                 
                 var newVersion = await mgr.CheckForUpdatesAsync();
                 if (newVersion != null)

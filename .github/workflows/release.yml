@@ -191,10 +191,13 @@ jobs:
       # existing user is silently cut off from updates. --packTitle is only the
       # name people see (shortcuts, installer, Installed apps), so the app can be
       # renamed freely; on update Velopack renames existing shortcuts to match.
+      # This fork ships as its own app, ScoutsuLazer, not the original's
+      # OsuScoutNew: the two then install side by side, and neither one's
+      # updater ever offers the other's releases.
       - name: Package
         run: |
           vpk pack \
-            --packId OsuScoutNew \
+            --packId ScoutsuLazer \
             --packTitle Scoutsu \
             --icon OsuScoutNew/Assets/scoutsu.ico \
             --packVersion "${{ needs.decide.outputs.version }}" \
@@ -216,7 +219,7 @@ jobs:
         if: needs.decide.outputs.dry_run == 'false'
         run: |
           vpk upload github \
-            --repoUrl https://github.com/AliKhairy/OsuScout \
+            --repoUrl "https://github.com/${{ github.repository }}" \
             --token "${{ github.token }}" \
             --tag "${{ needs.decide.outputs.version }}" \
             --targetCommitish "${GITHUB_SHA}" \
@@ -224,7 +227,7 @@ jobs:
             --publish
 
       # vpk names the installer and portable zip after --packId, which has to
-      # stay OsuScoutNew (see Package). Rename them on the release instead, so
+      # stay ScoutsuLazer (see Package). Rename them on the release instead, so
       # the download people see is Scoutsu-Setup.exe. Safe because the updater
       # never reads these two files - only releases.win.json and the .nupkg.
       - name: Give the downloads the app's name
@@ -242,8 +245,8 @@ jobs:
             fi
             gh api -X PATCH "$url" -f name="$2" --jq '"renamed to " + .name'
           }
-          rename OsuScoutNew-win-Setup.exe Scoutsu-Setup.exe
-          rename OsuScoutNew-win-Portable.zip Scoutsu-Portable.zip
+          rename ScoutsuLazer-win-Setup.exe Scoutsu-Setup.exe
+          rename ScoutsuLazer-win-Portable.zip Scoutsu-Portable.zip
 
       - name: Dry run summary
         if: needs.decide.outputs.dry_run == 'true'
