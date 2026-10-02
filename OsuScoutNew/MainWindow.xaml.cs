@@ -181,8 +181,19 @@ namespace OsuScoutNew
         // --- UI UTILITY HANDLERS ---
         private void Window_MouseDown(object sender, MouseButtonEventArgs e)
         {
-            if (e.ChangedButton == MouseButton.Left)
-                this.DragMove();
+            if (e.ChangedButton != MouseButton.Left) return;
+
+            // The title bar and the window both route here. Without this, a click on the title
+            // bar dragged twice: the first DragMove holds until the button is released, then the
+            // click bubbled up and the second one ran with the button already up.
+            e.Handled = true;
+
+            // DragMove throws when the button is no longer down (that second call, or a quick
+            // click that lands while the app is busy), and unhandled it closed the whole app.
+            // Missing one drag is harmless.
+            if (Mouse.LeftButton != MouseButtonState.Pressed) return;
+            try { DragMove(); }
+            catch (InvalidOperationException) { }
         }
 
         private void MinimizeButton_Click(object sender, RoutedEventArgs e)
@@ -516,7 +527,9 @@ namespace OsuScoutNew
             SaveSettings();
             _memoryService?.Dispose();
             _liveTrackerService?.Dispose();
-            _classifier?.Dispose();
+            // The classifier is deliberately not disposed: a scan or re-tag may still be running
+            // on worker threads, and freeing the ONNX sessions under them crashed the app with an
+            // access violation on close. The process is exiting; Windows reclaims the memory.
             base.OnClosed(e);
         }
     }
