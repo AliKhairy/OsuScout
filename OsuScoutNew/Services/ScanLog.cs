@@ -25,11 +25,11 @@ namespace OsuScoutNew.Services
     // username, and this file is meant to be attached to public GitHub issues.
     public sealed class ScanLog : IDisposable
     {
-        private static readonly string Folder = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "OsuScout");
-        private static readonly string LogPath = Path.Combine(Folder, "scan.log");
-        public static readonly string PreviousLogPath = Path.Combine(Folder, "scan-previous.log");
-        private static readonly string SkipListPath = Path.Combine(Folder, "skipped-maps.txt");
+        // Next to the library databases (%LOCALAPPDATA%\OsuScout), and moved with them by tests.
+        private static string Folder => OsuScout.OsuDbContext.DataFolder;
+        private static string LogPath => Path.Combine(Folder, "scan.log");
+        public static string PreviousLogPath => Path.Combine(Folder, "scan-previous.log");
+        private static string SkipListPath => Path.Combine(Folder, "skipped-maps.txt");
 
         // Normal maps take milliseconds; the slowest of 9,684 real maps took 2.5 s.
         private static readonly TimeSpan SlowAfter = TimeSpan.FromSeconds(15);

@@ -2,8 +2,9 @@
 #
 # Two independent jobs run in PARALLEL on separate machines:
 #   build  (Windows) - the WPF app must compile
-#   parity (Linux)   - the C# feature extractor must still agree with the
-#                      golden vectors produced by the Python trainer
+#   parity (Linux)   - the unit tests must pass, and the C# feature extractor
+#                      must still agree with the golden vectors produced by
+#                      the Python trainer
 #
 # The parity job is the one that matters most: the model is only valid if the
 # features computed at inference time match the ones computed during training.
@@ -62,9 +63,11 @@ jobs:
         run: dotnet build OsuScoutNew/OsuScoutNew.csproj -c Release --no-restore
 
   parity:
-    name: Feature parity (Linux)
-    # ParityDump deliberately targets plain net10.0, so it runs on Linux runners,
-    # which start faster and cost less than Windows ones.
+    name: Tests and feature parity (Linux)
+    # ParityDump and the test project deliberately target plain net10.0, so they
+    # run on Linux runners, which start faster and cost less than Windows ones.
+    # They share one job because a second runner costs more minutes to start
+    # than these steps take to run.
     runs-on: ubuntu-latest
 
     steps:
@@ -73,6 +76,11 @@ jobs:
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.0.x'
+
+      # UI-free code only: anything that needs WPF can't build on Linux, which
+      # is why new logic goes in classes the test project can reference.
+      - name: Unit tests
+        run: dotnet test tests/OsuScoutNew.Tests -c Release
 
       - name: Build ParityDump
         run: dotnet build parity/ParityDump -c Release

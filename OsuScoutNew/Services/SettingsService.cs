@@ -1,15 +1,38 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Serialization;
+using OsuScoutNew.Core;
 
 namespace OsuScoutNew.Services
 {
     // What the user had the app set to, so it comes back the same after a restart.
     public class AppSettings
     {
-        // Only differs from auto-detection when the user picked a folder with ⚙ DIR.
+        // Which client's library is shown. null only on a first run, before it is picked
+        // (see SettingsService.Load: settings saved by older versions mean stable).
+        [JsonConverter(typeof(JsonStringEnumConverter))]
+        public OsuClient? Client { get; set; }
+
+        // Only differs from auto-detection when the user picked a folder with DIR.
         public string SongsFolder { get; set; }
+        public string LazerDataFolder { get; set; }
+
+        // Where the window was and how big, so it reopens the same way. null = first launch.
+        public WindowPlacement Window { get; set; }
+
+        // The pin in the title bar: the overlay stays above the game. Off, it is a normal
+        // window (for players in exclusive fullscreen, where a window on top can make the
+        // game minimise).
+        public bool AlwaysOnTop { get; set; } = true;
+
+        // Whether the CS/AR/OD/HP sliders are shown.
+        public bool MoreFiltersOpen { get; set; }
+
+        // Process names to look for when focusing the game. Both clients run as "osu!".
+        public List<string> GameProcessNames { get; set; } = GameClients.DefaultProcessNames.ToList();
 
         public string SearchText { get; set; } = "";
         public string TagText { get; set; } = "";
@@ -22,17 +45,49 @@ namespace OsuScoutNew.Services
         public double? MaxBpm { get; set; }
         public double? MinLength { get; set; }
         public double? MaxLength { get; set; }
+        public double? MinCS { get; set; }
+        public double? MaxCS { get; set; }
+        public double? MinAR { get; set; }
+        public double? MaxAR { get; set; }
+        public double? MinOD { get; set; }
+        public double? MaxOD { get; set; }
+        public double? MinHP { get; set; }
+        public double? MaxHP { get; set; }
+
+        // Which map list columns are shown, and how wide. null = the defaults.
+        public List<ColumnSetting> Columns { get; set; }
 
         // OsuClassifier.ModelId of the model that produced the library's stored tags.
         // A different model on launch means those tags are stale (see RetagLibraryAsync).
         // null for libraries tagged before this was recorded, which are re-tagged once.
+        // Each client's library is tagged separately: TaggedWithModel is stable's.
         public string TaggedWithModel { get; set; }
+        public string LazerTaggedWithModel { get; set; }
 
         // First launch: hardest maps first.
         public List<SortSetting> Sort { get; set; } = new List<SortSetting>
         {
             new SortSetting { Column = "StarRating", Descending = true }
         };
+    }
+
+    public class WindowPlacement
+    {
+        public double Left { get; set; }
+        public double Top { get; set; }
+        public double Width { get; set; }
+        public double Height { get; set; }
+        public bool Maximized { get; set; }
+    }
+
+    // One map list column, keyed by the property it shows (its SortMemberPath).
+    public class ColumnSetting
+    {
+        public string Key { get; set; }
+        public bool Visible { get; set; } = true;
+        public double Width { get; set; }
+        // Star = a share of the leftover space (the default for text columns); otherwise pixels.
+        public bool Star { get; set; }
     }
 
     public class SortSetting
@@ -51,7 +106,12 @@ namespace OsuScoutNew.Services
             try
             {
                 if (File.Exists(SettingsPath))
-                    return JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(SettingsPath)) ?? new AppSettings();
+                {
+                    var settings = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(SettingsPath)) ?? new AppSettings();
+                    // Saved before lazer support existed: the user was on stable all along.
+                    settings.Client ??= OsuClient.Stable;
+                    return settings;
+                }
             }
             catch
             {
