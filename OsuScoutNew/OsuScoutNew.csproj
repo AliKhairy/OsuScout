@@ -10,7 +10,7 @@
     <!-- THE release number. Bump it in a PR and merging that PR ships it to users
          (see .github/workflows/release.yml). MAJOR.MINOR.PATCH: breaking change /
          new feature / bug fix only. -->
-    <Version>1.2.1</Version>
+    <Version>1.2.2</Version>
 
     <!-- What users see. Task Manager and file properties show AssemblyTitle; the exe,
          its shortcuts and the taskbar use ApplicationIcon (regenerate it with

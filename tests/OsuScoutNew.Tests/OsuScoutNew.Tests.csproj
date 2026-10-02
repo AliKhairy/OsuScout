@@ -31,6 +31,8 @@
     <Compile Include="..\..\OsuScoutNew\Services\OsuLibraryService.cs" Link="App\OsuLibraryService.cs" />
     <Compile Include="..\..\OsuScoutNew\Services\OsuLiveTrackerService.cs" Link="App\OsuLiveTrackerService.cs" />
     <Compile Include="..\..\OsuScoutNew\Services\MapFilter.cs" Link="App\MapFilter.cs" />
+    <Compile Include="..\..\OsuScoutNew\Services\ScanLog.cs" Link="App\ScanLog.cs" />
+    <Compile Include="..\..\OsuScoutNew\StarRatingGuard.cs" Link="App\StarRatingGuard.cs" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.9" />
     <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.13" />
     <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.27.0" />

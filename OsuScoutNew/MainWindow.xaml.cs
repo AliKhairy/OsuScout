@@ -97,12 +97,33 @@ namespace OsuScoutNew
 
             this.Loaded += MainWindow_Loaded;
 
+            ReportPreviousScanCrash();
             OpenLibrary();
 
             TagSearchBox.ItemsSource = _classifier.Config.tags;
             RestoreSettings(settings);
             UpdateFilterLabels();
             UpdateGrid();
+        }
+
+        // A scan that took the whole app down leaves a log with no ending (see ScanLog). Say so
+        // once, skip the maps it was reading, and point at the log so the crash can be reported.
+        private static void ReportPreviousScanCrash()
+        {
+            var maps = ScanLog.RecoverFromCrash();
+            if (maps.Count == 0) return;
+
+            string list = string.Join("\n", maps.Take(12).Select(m => "• " + m));
+            if (maps.Count > 12) list += $"\n…and {maps.Count - 12} more";
+            var answer = MessageDialog.Show(null,
+                "Scoutsu closed unexpectedly the last time it scanned your maps. It was reading these when it stopped:\n\n" +
+                list + "\n\n" +
+                "They'll be skipped from now on so the scan can finish.\n\n" +
+                "If you can, please report this at github.com/FrasierGH/OsuScout/issues and attach the file " +
+                "scan-previous.log. Open the folder with that file now?",
+                "Scoutsu closed unexpectedly", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+            if (answer == MessageBoxResult.Yes)
+                System.Diagnostics.Process.Start("explorer.exe", $"/select,\"{ScanLog.PreviousLogPath}\"");
         }
 
         // Only asked once: afterwards AppSettings.Client remembers the choice.
@@ -212,7 +233,7 @@ namespace OsuScoutNew
                         ScanProgressBar.Value = percent;
                         ScanProgressText.Text = $"Updating tags for the new model... {percent}%";
                     });
-                    await _libraryService.RetagLibraryAsync(_source.Kind, retagProgress);
+                    await _libraryService.RetagLibraryAsync(_source, retagProgress);
                     TaggedWithModel = _classifier.ModelId;
                     SaveSettings();
                 }
@@ -727,6 +748,7 @@ namespace OsuScoutNew
 
         protected override void OnClosed(EventArgs e)
         {
+            ScanLog.MarkAppClosed();
             SaveSettings();
             _liveTrackerService?.Dispose();
             _classifier?.Dispose();
