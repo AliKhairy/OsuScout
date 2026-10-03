@@ -156,7 +156,7 @@ namespace OsuScoutNew
                 "Scoutsu closed unexpectedly the last time it scanned your maps. It was reading these when it stopped:\n\n" +
                 list + "\n\n" +
                 "They'll be skipped from now on so the scan can finish.\n\n" +
-                "If you can, please report this at github.com/AliKhairy/OsuScout/issues and attach the file " +
+                "If you can, please report this at github.com/AliKhairy/Scoutsu/issues and attach the file " +
                 "scan-previous.log. Open the folder with that file now?",
                 "Scoutsu closed unexpectedly", MessageBoxButton.YesNo, MessageBoxImage.Warning);
             if (answer == MessageBoxResult.Yes)
@@ -899,7 +899,10 @@ namespace OsuScoutNew
         {
             try
             {
-                var mgr = new UpdateManager(new GithubSource("https://github.com/AliKhairy/OsuScout", null, false));
+                // The repo was called OsuScout until 1.3.0. Copies from before then still ask
+                // for that name and reach this one through GitHub's redirect, which only lasts
+                // while no new repository called OsuScout exists on the account.
+                var mgr = new UpdateManager(new GithubSource("https://github.com/AliKhairy/Scoutsu", null, false));
 
                 var newVersion = await mgr.CheckForUpdatesAsync();
                 if (newVersion != null)

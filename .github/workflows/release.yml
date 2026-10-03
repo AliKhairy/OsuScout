@@ -212,11 +212,13 @@ jobs:
       # THE ONLY STEP THAT REACHES USERS. Everything above runs identically in a
       # dry run; this is the single line of difference between rehearsal and
       # release, which is what makes the rehearsal worth trusting.
+      # --repoUrl comes from the repository this runs in, so renaming the repo
+      # (it was OsuScout until 1.3.0) never needs an edit here.
       - name: Publish GitHub Release
         if: needs.decide.outputs.dry_run == 'false'
         run: |
           vpk upload github \
-            --repoUrl https://github.com/AliKhairy/OsuScout \
+            --repoUrl "https://github.com/${{ github.repository }}" \
             --token "${{ github.token }}" \
             --tag "${{ needs.decide.outputs.version }}" \
             --targetCommitish "${GITHUB_SHA}" \
