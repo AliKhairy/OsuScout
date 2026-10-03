@@ -22,7 +22,7 @@ Scoutsu finds, tags and searches the maps of either client. On first launch it p
 osu!lazer support started in [FrasierGH's fork](https://github.com/FrasierGH/OsuScout).
 
 ## Installation
-1. Go to the [Releases](https://github.com/AliKhairy/OsuScout/releases) page.
+1. Go to the [Releases](https://github.com/AliKhairy/Scoutsu/releases) page.
 2. Download `Scoutsu-Setup.exe` from the latest release.
 3. Run the setup file. The application will automatically install and launch!
 4. A shortcut will be created on your desktop and start menu.
