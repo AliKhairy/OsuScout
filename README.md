@@ -11,6 +11,12 @@ Scoutsu (formerly OsuScout) is a WPF-based tool designed for osu! players to ana
 - Intuitive user interface built with MahApps.Metro
 - Automatic background updates via GitHub Releases
 
+## Installation
+1. Go to the [Releases](https://github.com/AliKhairy/Scoutsu/releases) page.
+2. Download `Scoutsu-Setup.exe` from the latest release.
+3. Run the setup file. The application will automatically install and launch!
+4. A shortcut will be created on your desktop and start menu.
+
 ## osu!stable and osu!lazer
 Scoutsu finds, tags and searches the maps of either client. On first launch it picks whichever one is installed, or asks if you have both. **STABLE / LAZER** at the top switches between them, and each client keeps its own library, so switching never mixes them.
 
@@ -21,11 +27,6 @@ Scoutsu finds, tags and searches the maps of either client. On first launch it p
 
 osu!lazer support started in [FrasierGH's fork](https://github.com/FrasierGH/OsuScout).
 
-## Installation
-1. Go to the [Releases](https://github.com/AliKhairy/Scoutsu/releases) page.
-2. Download `Scoutsu-Setup.exe` from the latest release.
-3. Run the setup file. The application will automatically install and launch!
-4. A shortcut will be created on your desktop and start menu.
 
 ## License
 Copyright (C) 2026 AliKhairy
